@@ -36,6 +36,8 @@ for name, values in df.iloc[:, 2:14].items():
 for name, values in df.iloc[:, 20:21].items():
     df[name] = df[name].round(2)
 
+lotdflt = df['Lot'].iloc[0] # get initial lot,wfr for default wafer maps
+wfrdflt = df['Wfr'].iloc[0]
 tooll = np.sort(df['Tool'].unique()).tolist() # get a unique list of tools for the graph selection menu and colors
 lotl = np.sort(df['Lot'].unique()).tolist()
 wfrl = np.sort(df['Wfr'].unique()).tolist()
@@ -91,7 +93,7 @@ app.layout = dbc.Container(html.Div([
     dcc.RadioItems(
         id='chart-y', 
         options=[{'value': x, 'label': x}  # radio button labels and values
-                 for x in ['MP1', 'MP2', 'SW']],  # radio button labels and values
+                 for x in ['MP1', 'MP2']],  # radio button labels and values
         value='MP1',   # Default
         labelStyle={'display': 'inline-block'}
         ), style={'display': 'inline-block', 'width': '40%'}),
@@ -99,7 +101,7 @@ app.layout = dbc.Container(html.Div([
         dcc.RadioItems(
         id='boxplt-y', 
         options=[{'value': x, 'label': x}  # radio button labels and values
-                 for x in ['MP1', 'MP2', 'SW']],  # radio button labels and values
+                 for x in ['MP1', 'MP2']],  # radio button labels and values
         value='MP1',   # Default
         labelStyle={'display': 'inline-block'}
         ), style={'display': 'inline-block', 'width': '50%'}),
@@ -116,11 +118,36 @@ app.layout = dbc.Container(html.Div([
         value='PEB',   # Default
         labelStyle={'display': 'inline-block'}
         ), style={'display': 'inline-block', 'width': '50%'}),
-    html.Div([dcc.Graph(figure={}, id='linechart1')], style={'display': 'inline-block', 'width': '50%'}),  # figure is blank dict because created in callback below
-    html.Div([dcc.Graph(figure={}, id='box-plot1')], style={'display': 'inline-block', 'width': '50%'}),
-    html.Div([dcc.Dropdown(lotl, '23121022', id='lot-dd')], style={'display': 'inline-block', 'width': '10%'}),
-    html.Div([dcc.Dropdown(wfrl, '7', id='wfr-dd')], style={'display': 'inline-block', 'width': '10%'}),
-    html.Div([dcc.Graph(figure={}, id='cntr1')], style={'display': 'inline-block', 'width': '30%'}),
+    html.Div([dcc.Graph(figure={}, id='linechart1')], style={'display': 'inline-block'}),  # figure is blank dict because created in callback below
+    html.Div([dcc.Graph(figure={}, id='box-plot1')], style={'display': 'inline-block'}),
+    html.Br(style={"line-height": "5"}),
+    html.Div(
+    dcc.RadioItems(
+        id='cntr1-radio', 
+        options=[{'value': x, 'label': x}  # radio button labels and values
+                 for x in ['Auto', 'Manual']],  # radio button labels and values
+        value='Auto',   # Default
+        labelStyle={'display': 'inline-block'}
+        ), style={'display': 'inline-block', 'width': 430}),
+    html.Div(
+    dcc.RadioItems(
+        id='cntr2-radio', 
+        options=[{'value': x, 'label': x}  # radio button labels and values
+                 for x in ['Auto', 'Manual']],  # radio button labels and values
+        value='Auto',   # Default
+        labelStyle={'display': 'inline-block'}
+        ), style={'display': 'inline-block', 'width': 430}),
+    html.Br(style={"line-height": "5"}),
+    html.Div([dcc.RangeSlider(60, 70, 0.5, value=[60, 70], tooltip={"placement": "bottom", "always_visible": False}, id='cntr1-slider')], style={'display': 'inline-block', 'width': 430}),
+    html.Div([dcc.RangeSlider(60, 70, 0.5, value=[60, 70], tooltip={"placement": "bottom", "always_visible": False}, id='cntr2-slider')], style={'display': 'inline-block', 'width': 430}),
+    html.Br(style={"line-height": "5"}),
+    html.Div([dcc.Dropdown(lotl, lotdflt, id='lot1-dd')], style={'display': 'inline-block', 'width': 215}),
+    html.Div([dcc.Dropdown(wfrl, wfrdflt, id='wfr1-dd')], style={'display': 'inline-block', 'width': 215}),
+    html.Div([dcc.Dropdown(lotl, lotdflt, id='lot2-dd')], style={'display': 'inline-block', 'width': 215}),
+    html.Div([dcc.Dropdown(wfrl, wfrdflt, id='wfr2-dd')], style={'display': 'inline-block', 'width': 215}),
+    html.Br(style={"line-height": "5"}),
+    html.Div([dcc.Graph(figure={}, id='cntr1')], style={'display': 'inline-block', 'width': 430}),
+    html.Div([dcc.Graph(figure={}, id='cntr2')], style={'display': 'inline-block', 'width': 430}),
 ]), fluid=True, className="dbc dbc-row-selectable")
 
 #=====CREATE INTERACTIVE GRAPHS=============
@@ -161,9 +188,11 @@ def generate_chart(y, start_date, end_date, unit, limits):
 
 @app.callback(
     Output("cntr1", "figure"), 
-    Input("lot-dd", "value"),
-    Input("wfr-dd", "value"))
-def generate_chart(lotID, wfrID):
+    Input("lot1-dd", "value"),
+    Input("wfr1-dd", "value"),
+    Input("cntr1-radio", "value"),
+    Input("cntr1-slider", "value"))
+def generate_chart(lotID, wfrID, radio, cntr_limits):
     dfcntr = df.loc[(df['Lot'] == lotID) & (df['Wfr'] == wfrID )]
     dfcntr = dfcntr.drop(['Date', 'date', 'LGPT', 'iARC', 'COAT', 'CHUCK', 'PEB','DVLP','Target','LS','US'], axis=1)
     # Create model to predict MP1 where there was no measurement
@@ -175,57 +204,133 @@ def generate_chart(lotID, wfrID):
     regressor = LinearRegression()
     regressor.fit(X_poly, label_train)
     # Create 2D matrix: X, Y, Z for contour plot
-    xmm = np.sort(np.unique(dfcntr.iloc[:, -4:-3].values)) # get the unique Xmm location values
-    ymm = np.sort(np.unique(dfcntr.iloc[:, -3:-2].values)) # get the unique Ymm location values
+    xcoord = np.append(dfcntr.iloc[:, -4:-3].values, [i for i in range(-150, 160, 10)]) # create dummy X/Y on the edge and append to the xmm/ymm lists for better edge coverage of predictions
+    ycoord = np.append(dfcntr.iloc[:, -3:-2].values, [i for i in range(-150, 160, 10)])
+    xmm = np.sort(np.unique(xcoord))
+    ymm = np.sort(np.unique(ycoord))
+    #xmm = np.sort(np.unique(dfcntr.iloc[:, -4:-3].values)) # get the unique Xmm location values
+    #ymm = np.sort(np.unique(dfcntr.iloc[:, -3:-2].values)) # get the unique Ymm location values
     xplt = np.array(xmm).tolist()
     yplt = np.array(ymm).tolist()
     X,Y = np.meshgrid(xmm, ymm)
     Z = np.zeros((X.shape))
+    
     # Create a dict that maps all the measured MP1s with their X,Y loc
     dict = dfcntr.to_dict('list')
     MP1_map={}
     for i in range(len(dict['MP1'])):
         MP1_map[str(dict['Xmm'][i]) + '-' + str(dict['Ymm'][i])] = dict['MP1'][i]
     # Create a full 2D map of MP1 for every X/Y loc. Use meas values if present, otherwise fill in with predicted values
+    rmax = dfcntr['Rmm'].max()    # will only predict values beyond the radius of measured values. will let plotly contour fill in the middle of the wafer
     for i in range(Z.shape[1]):
         for j in range(Z.shape[0]):
             if MP1_map.get(str(X[0][i]) + '-' + str(Y[j][0])) == None:
-                pred_value = regressor.predict(poly_reg.transform([[X[0][i], Y[j][0]]]))
-                if np.sqrt(X[0][i]**2 + Y[j][0]**2) < 150:
+                radius = np.sqrt(X[0][i]**2 + Y[j][0]**2)
+                if radius > rmax and radius < 150:    # will only predict values beyond the radius of measured values.
+                    pred_value = regressor.predict(poly_reg.transform([[X[0][i], Y[j][0]]]))
                     Z[j][i] = pred_value[0]
-                else:
-                    Z[j][i] = 65
             else:
-                Z[j][i] = MP1_map[str(X[0][i]) + '-' + str(Y[j][0])]    
-    # Mask out any values beyond the edge of the wafer
-    R = np.sqrt(X**2 + Y**2)
-    Zunmasked = Z
-    Z = np.ma.masked_where(R > 140, Z)
-    zlvl = 20
-    fig = go.Figure(data =
-    go.Contour(
-        z=Z,
-        x=xplt,
-        y=yplt,
-        colorscale='Turbo',
-    ))
-    #fig, ax = plt.subplots()
+                Z[j][i] = MP1_map[str(X[0][i]) + '-' + str(Y[j][0])]    # point was measured so fill in with measured value
+    Z = np.where(Z==0, np.nan, Z) # replace 0's with nan
+    #Zdf = dfcntr.drop(['DateTime', 'Lot', 'Wfr', 'Slot', 'Tool', 'MP', 'Site'], axis=1)
+    #Zarray = Zdf.pivot(index="Xmm", columns="Ymm", values="MP1").to_numpy()
+    if radio =="Auto":
+        contoursd = {'coloring':'heatmap', 'showlabels':True, 'labelfont':{'size':12, 'color':'white'}} # can add 'start':64, 'end':67, size=4
+    else:
+        contoursd = {'coloring':'heatmap', 'start':cntr_limits[0], 'end':cntr_limits[1], 'showlabels':True, 'labelfont':{'size':12, 'color':'white'}} # can add 'start':64, 'end':67, size=4
+    fig = go.Figure(data=
+        go.Contour(
+            z=Z,
+            x=xmm,
+            y=ymm,
+            colorscale='Turbo',
+            connectgaps=True,
+            contours=contoursd,
+            colorbar={'title': dfcntr['Tool'].iloc[0]}
+            ))
+    fig.update_layout(title=str(dfcntr['DateTime'].iloc[0]))
+    fig.add_shape(type="circle",
+        xref="x", yref="y",
+        x0=-150, y0=-150,
+        x1=150, y1=150,
+        opacity=0.2,
+        fillcolor="blue",
+        line_color="black",
+        ) 
+    return fig
 
-            #cplt = ax.contour(X, Y, Z, colors='k', linewidths=1) # k: black
-    #cplt = plt.contour(X, Y, Z, levels=zlvl, cmap='RdBu_r', linewidths=1) # colors='k' for black
-    #cplt = plt.contour(X, Y, Z, levels=10, colors='k', linewidths=0.2, linestyles='dashed') # colors='k' for black
-    #cplt_filled = plt.contourf(X, Y, Z, levels=zlvl, cmap='RdBu_r')
-
-    #fig.colorbar(cplt_filled) # could also do plt.colorbar(cplt_filled)
-    #plt.clabel(cplt, inline=True, fontsize=10, colors='black') # fmt = '%2.1f'
-
-    # Format subplot
-            #ax.plot(xplt, yplt, 'ko', ms=3) # Marker type-> k:black line, o: marker and ms=3 is marker size
-    #ax.set_title('MP1')
-    #ax.set_xlabel('X (mm)')
-    #ax.set_ylabel('Y (mm)')
-    #fig = px.box(filtered_data, x="Tool", y=y, color=unit)
+@app.callback(
+    Output("cntr2", "figure"), 
+    Input("lot2-dd", "value"),
+    Input("wfr2-dd", "value"),
+    Input("cntr2-radio", "value"),
+    Input("cntr2-slider", "value"))
+def generate_chart(lotID, wfrID, radio, cntr_limits):
+    dfcntr = df.loc[(df['Lot'] == lotID) & (df['Wfr'] == wfrID )]
+    dfcntr = dfcntr.drop(['Date', 'date', 'LGPT', 'iARC', 'COAT', 'CHUCK', 'PEB','DVLP','Target','LS','US'], axis=1)
+    # Create model to predict MP1 where there was no measurement
+    features = dfcntr.iloc[:, -4:-2].values
+    label = dfcntr.iloc[:, -1].values
+    features_train, features_test, label_train, label_test = train_test_split(features, label, test_size = 0.1, random_state=0)
+    poly_reg = PolynomialFeatures(degree = 4)
+    X_poly = poly_reg.fit_transform(features_train)
+    regressor = LinearRegression()
+    regressor.fit(X_poly, label_train)
+    # Create 2D matrix: X, Y, Z for contour plot
+    xcoord = np.append(dfcntr.iloc[:, -4:-3].values, [i for i in range(-150, 160, 10)]) # create dummy X/Y on the edge and append to the xmm/ymm lists for better edge coverage of predictions
+    ycoord = np.append(dfcntr.iloc[:, -3:-2].values, [i for i in range(-150, 160, 10)])
+    xmm = np.sort(np.unique(xcoord))
+    ymm = np.sort(np.unique(ycoord))
+    #xmm = np.sort(np.unique(dfcntr.iloc[:, -4:-3].values)) # get the unique Xmm location values
+    #ymm = np.sort(np.unique(dfcntr.iloc[:, -3:-2].values)) # get the unique Ymm location values
+    xplt = np.array(xmm).tolist()
+    yplt = np.array(ymm).tolist()
+    X,Y = np.meshgrid(xmm, ymm)
+    Z = np.zeros((X.shape))
+    
+    # Create a dict that maps all the measured MP1s with their X,Y loc
+    dict = dfcntr.to_dict('list')
+    MP1_map={}
+    for i in range(len(dict['MP1'])):
+        MP1_map[str(dict['Xmm'][i]) + '-' + str(dict['Ymm'][i])] = dict['MP1'][i]
+    # Create a full 2D map of MP1 for every X/Y loc. Use meas values if present, otherwise fill in with predicted values
+    rmax = dfcntr['Rmm'].max()    # will only predict values beyond the radius of measured values. will let plotly contour fill in the middle of the wafer
+    for i in range(Z.shape[1]):
+        for j in range(Z.shape[0]):
+            if MP1_map.get(str(X[0][i]) + '-' + str(Y[j][0])) == None:
+                radius = np.sqrt(X[0][i]**2 + Y[j][0]**2)
+                if radius > rmax and radius < 150:    # will only predict values beyond the radius of measured values.
+                    pred_value = regressor.predict(poly_reg.transform([[X[0][i], Y[j][0]]]))
+                    Z[j][i] = pred_value[0]
+            else:
+                Z[j][i] = MP1_map[str(X[0][i]) + '-' + str(Y[j][0])]    # point was measured so fill in with measured value
+    Z = np.where(Z==0, np.nan, Z) # replace 0's with nan
+    #Zdf = dfcntr.drop(['DateTime', 'Lot', 'Wfr', 'Slot', 'Tool', 'MP', 'Site'], axis=1)
+    #Zarray = Zdf.pivot(index="Xmm", columns="Ymm", values="MP1").to_numpy()
+    if radio =="Auto":
+        contoursd = {'coloring':'heatmap', 'showlabels':True, 'labelfont':{'size':12, 'color':'white'}} # can add 'start':64, 'end':67, size=4
+    else:
+        contoursd = {'coloring':'heatmap', 'start':cntr_limits[0], 'end':cntr_limits[1], 'showlabels':True, 'labelfont':{'size':12, 'color':'white'}} # can add 'start':64, 'end':67, size=4
+    fig = go.Figure(data=
+        go.Contour(
+            z=Z,
+            x=xmm,
+            y=ymm,
+            colorscale='Turbo',
+            connectgaps=True,
+            contours=contoursd,
+            colorbar={'title': dfcntr['Tool'].iloc[0]}
+            ))
+    fig.update_layout(title=str(dfcntr['DateTime'].iloc[0]))
+    fig.add_shape(type="circle",
+        xref="x", yref="y",
+        x0=-150, y0=-150,
+        x1=150, y1=150,
+        opacity=0.2,
+        fillcolor="blue",
+        line_color="black",
+        ) 
     return fig
 
 if __name__ == '__main__':
-    app.run_server(debug=True,port=8051)
+    app.run_server(debug=True,port=8050)
