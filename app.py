@@ -4,6 +4,7 @@ import numpy as np
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import r2_score
 
                               # installed odfpy for excel/ods reading
 import dash_bootstrap_components as dbc  # installed dash_bootstrap_templates too
@@ -27,7 +28,7 @@ from dash.dependencies import Input, Output
 # Manually created date column in spreadsheet and truncated to day only (no H:M). 
 # Tried pd.to_datetime(df['_time'], format="%Y-%m-%d").dt.floor("d") but it left .0000000 for the H:M. May have been ok.
 # DatetimeProperties.to_pydatetime is deprecated, in future version will return a Series containing python datetime objects instead of an ndarray. To retain the old behavior, call `np.array` on the result
-df = pd.read_csv('CD-ALL-synthetic-data.csv').assign(date=lambda data: pd.to_datetime(data["Date"], format="%Y-%m-%d")) # was not uploading with csv extension
+df = pd.read_csv('CD-ALL-synthetic-data').assign(date=lambda data: pd.to_datetime(data["Date"], format="%Y-%m-%d")) # was not uploading with csv extension
 
 # df['Lot'] = df['Lot'].astype('str') charts were not working because this was read as an int. had to convert to str
 for name, values in df.iloc[:, 2:14].items():
@@ -36,6 +37,8 @@ for name, values in df.iloc[:, 2:14].items():
 for name, values in df.iloc[:, 20:21].items():
     df[name] = df[name].round(2)
 
+target = df['Target'].iloc[0] # get initial target for default wafer maps
+dflt_specl = [df['LS'].iloc[0], df['US'].iloc[0]] # get initial spec limits for default wafer maps
 lotdflt = df['Lot'].iloc[0] # get initial lot,wfr for default wafer maps
 wfrdflt = df['Wfr'].iloc[0]
 tooll = np.sort(df['Tool'].unique()).tolist() # get a unique list of tools for the graph selection menu and colors
@@ -87,7 +90,7 @@ app.layout = dbc.Container(html.Div([
             end_date=df["date"].max().date(),
         )], style={'display': 'inline-block', 'width': '50%'}),
     html.Div(["CD (nm)",table], style={'display': 'inline-block', 'width': '50%'}),
-    html.Div([dcc.RangeSlider(55, 75, 0.5, value=[62, 68], tooltip={"placement": "bottom", "always_visible": False}, id='limit-slider')], style={'display': 'inline-block', 'width': '100%'}),
+    html.Div([dcc.RangeSlider(55, 75, 0.5, value=dflt_specl, tooltip={"placement": "bottom", "always_visible": False}, id='limit-slider')], style={'display': 'inline-block', 'width': '100%'}),
     html.Div('Tools', style={'display': 'inline-block', 'width': '10%'}),
     html.Div(
     dcc.RadioItems(
@@ -151,6 +154,7 @@ app.layout = dbc.Container(html.Div([
 ]), fluid=True, className="dbc dbc-row-selectable")
 
 #=====CREATE INTERACTIVE GRAPHS=============
+# Create line chart
 @app.callback(
     Output("linechart1", "figure"),    # args are component id and then component property
     Input("tool_list", "value"),        # args are component id and then component property. component property is passed
@@ -170,8 +174,10 @@ def update_line_chart(tool, start_date, end_date, y, limits):    # callback func
         ,markers=True)
     fig.add_hline(y=limits[0], line_width=2, line_dash="dash", line_color="red")
     fig.add_hline(y=limits[1], line_width=2, line_dash="dash", line_color="red")
+    fig.add_hline(y=target, line_width=1, line_dash="dash", line_color="black")
     return fig
-                                                
+
+# Create box plot
 @app.callback(
     Output("box-plot1", "figure"), 
     Input("boxplt-y", "value"),
@@ -184,6 +190,7 @@ def generate_chart(y, start_date, end_date, unit, limits):
     fig = px.box(filtered_data, x="Tool", y=y, color=unit)
     fig.add_hline(y=limits[0], line_width=2, line_dash="dash", line_color="red")
     fig.add_hline(y=limits[1], line_width=2, line_dash="dash", line_color="red")
+    fig.add_hline(y=target, line_width=1, line_dash="dash", line_color="black")
     return fig
 
 @app.callback(
@@ -248,7 +255,8 @@ def generate_chart(lotID, wfrID, radio, cntr_limits):
             contours=contoursd,
             colorbar={'title': dfcntr['Tool'].iloc[0]}
             ))
-    fig.update_layout(title=str(dfcntr['DateTime'].iloc[0]))
+    title = str(dfcntr['DateTime'].iloc[0])[:19]
+    fig.update_layout(title={'text': title, 'font': {'size': 12}})
     fig.add_shape(type="circle",
         xref="x", yref="y",
         x0=-150, y0=-150,
@@ -276,6 +284,9 @@ def generate_chart(lotID, wfrID, radio, cntr_limits):
     X_poly = poly_reg.fit_transform(features_train)
     regressor = LinearRegression()
     regressor.fit(X_poly, label_train)
+    # Predicting the Test set results
+    label_pred = regressor.predict(poly_reg.transform(features_test))
+    r2 = round(r2_score(label_test, label_pred),0)
     # Create 2D matrix: X, Y, Z for contour plot
     xcoord = np.append(dfcntr.iloc[:, -4:-3].values, [i for i in range(-150, 160, 10)]) # create dummy X/Y on the edge and append to the xmm/ymm lists for better edge coverage of predictions
     ycoord = np.append(dfcntr.iloc[:, -3:-2].values, [i for i in range(-150, 160, 10)])
@@ -321,7 +332,9 @@ def generate_chart(lotID, wfrID, radio, cntr_limits):
             contours=contoursd,
             colorbar={'title': dfcntr['Tool'].iloc[0]}
             ))
-    fig.update_layout(title=str(dfcntr['DateTime'].iloc[0]))
+    #title = str(dfcntr['DateTime'].iloc[0]) + " Edge R²= " + str(r2)
+    title = str(dfcntr['DateTime'].iloc[0])[:19]
+    fig.update_layout(title={'text': title, 'font': {'size': 12}})
     fig.add_shape(type="circle",
         xref="x", yref="y",
         x0=-150, y0=-150,
