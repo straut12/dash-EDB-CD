@@ -30,13 +30,22 @@ from dash.dependencies import Input, Output
 # Tried pd.to_datetime(df['_time'], format="%Y-%m-%d").dt.floor("d") but it left .0000000 for the H:M. May have been ok.
 # DatetimeProperties.to_pydatetime is deprecated, in future version will return a Series containing python datetime objects instead of an ndarray. To retain the old behavior, call `np.array` on the result
 df = pd.read_csv('CD-ALL-synthetic-data').assign(date=lambda data: pd.to_datetime(data["Date"], format="%Y-%m-%d")) # was not uploading with csv extension
+# Updated to use google sheets csv
 
+# Clean up. Get Date Time columns into correct format. Slot, Wfr, Lot as strings. And make sure feature/labels are at end of the table
+df['DateTime'] = pd.to_datetime(df['Date'] + ' ' + df['DateTime'], format='%Y-%m-%d %H:%M:%S')
+df['DateTime'] = df['DateTime'].dt.tz_localize('UTC')
 # df['Lot'] = df['Lot'].astype('str') charts were not working because this was read as an int. had to convert to str
 for name, values in df.iloc[:, 2:14].items():
     df[name] = df[name].astype(str)
 
 for name, values in df.iloc[:, 20:21].items():
     df[name] = df[name].round(2)
+
+modell = ['Xmm', 'Ymm', 'Rmm', 'MP1']  # make sure features/labels are at the end of the table for modeling later on
+for label in modell:
+  col = df.pop(label)
+  df[label] = col
 
 target = df['Target'].iloc[0] # get initial target for default wafer maps
 dflt_specl = [df['LS'].iloc[0], df['US'].iloc[0]] # get initial spec limits for default wafer maps
@@ -72,8 +81,8 @@ df['DateTime'] = pd.to_datetime((df['DateTime'])) # converted _time from obj to 
 #table = dbc.Table.from_dataframe(dfsummary, striped=True, bordered=True, hover=True)
 
 #histogram1 = px.histogram(df, x="CD", nbins=30)
-max_table_rows = 11
 
+max_table_rows = 11
 
 #===START DASH AND CREATE LAYOUT OF TABLES/GRAPHS===========
 # Use dash bootstrap components (dbc) for styling
@@ -112,16 +121,17 @@ app.layout = dbc.Container(html.Div([
             {'name': ['Summary Table','Sigma'], 'id': 'sigma'}
         ],
         data=[{'no_rows': i} for i in range(1,max_table_rows)],
+        sort_action='native',
+        sort_mode='multi',
         editable=False,
         merge_duplicate_headers=True,
         style_cell={'textAlign': 'center'},
         style_header={
             'backgroundColor': 'rgb(40, 40, 40)',
             'fontWeight': 'bold'
-        },
-        ),
+        })
         ], style={'display': 'inline-table', 'margin':'10px', 'width': '20%'}),
-    html.Div(["Tukey HSD Results", dt.DataTable(id='tukey-table',
+    html.Div(["Top 10 Tukey HSD Results", dt.DataTable(id='tukey-table',
         columns=[
             {'name': ['Test Result on Means', 'No'], 'id': 'no_rows'},
             {'name': ['Test Result on Means','Tool'], 'id': 'tukey-ave-tool'},
@@ -137,14 +147,45 @@ app.layout = dbc.Container(html.Div([
             {'name': ['Test Result on Sigmas','p-Adj'], 'id': 'tukey-sig-padj'}
         ],
         data=[{'no_rows': i} for i in range(1,max_table_rows)],
+        style_data_conditional=[
+            {
+                'if': {
+                    'column_id': 'tukey-ave-grp1',
+                    'filter_query': '{tukey-ave-grp1} contains "**"'
+                },
+                'backgroundColor': '#052027',
+            },
+            {
+                'if': {
+                    'column_id': 'tukey-ave-grp2',
+                    'filter_query': '{tukey-ave-grp2} contains "**"'
+                },
+                'backgroundColor': '#052027',
+            },
+            {
+                'if': {
+                    'column_id': 'tukey-sig-grp1',
+                    'filter_query': '{tukey-sig-grp1} contains "**"'
+                },
+                'backgroundColor': '#052027',
+            },
+            {
+                'if': {
+                    'column_id': 'tukey-sig-grp2',
+                    'filter_query': '{tukey-sig-grp2} contains "**"'
+                },
+                'backgroundColor': '#052027',
+            }
+        ],
         editable=False,
+        sort_action='native',
+        sort_mode='multi',
         style_cell={'textAlign': 'center'},
         merge_duplicate_headers=True,
         style_header={
             'backgroundColor': 'rgb(40, 40, 40)',
-            'fontWeight': 'bold'
-        },
-        ),
+            'fontWeight': 'bold',
+        })
         ], style={'display': 'inline-table', 'margin':'10px', 'width': '75%'}),
     html.Div([dcc.RangeSlider(55, 75, 0.5, value=dflt_specl, tooltip={"placement": "bottom", "always_visible": False}, id='limit-slider')], style={'display': 'inline-block', 'width': '100%'}),
     html.Div('Tools', style={'display': 'inline-block', 'width': '10%'}),
@@ -173,7 +214,7 @@ app.layout = dbc.Container(html.Div([
         dcc.RadioItems(
         id='unit', 
         options=[{'value': x, 'label': x}  # radio button labels and values
-                for x in ['iARC', 'COAT', 'CHUCK', 'PEB', 'DVLP']],  # radio button labels and values
+                for x in ['ARC', 'COAT', 'CHUCK', 'PEB', 'DVLP']],  # radio button labels and values
         value='PEB',   # Default
         labelStyle={'display': 'inline-block'}
         ), style={'display': 'inline-block', 'width': '50%'}),
@@ -207,15 +248,68 @@ app.layout = dbc.Container(html.Div([
     html.Br(style={"line-height": "5"}),
     html.Div([dcc.Graph(figure={}, id='cntr1')], style={'display': 'inline-block', 'width': 430}),
     html.Div([dcc.Graph(figure={}, id='cntr2')], style={'display': 'inline-block', 'width': 430}),
+    html.Br(style={"line-height": "5"}),
+    html.Div(["Reticle Analysis  ",
+        dcc.RadioItems(
+        id='reticle-y', 
+        options=[{'value': x, 'label': x}  # radio button labels and values
+                 for x in ['MP1', 'MP2']],  # radio button labels and values
+        value='MP1',   # Default
+        labelStyle={'display': 'inline-block'}
+        )], style={'display': 'inline-flex', 'width': '50%'}),
+    html.Br(style={"line-height": "5"}),
+    html.Div([dcc.Graph(figure={}, id='reticle')], style={'display': 'inline-block'}),
+    html.Div([dcc.Graph(figure={}, id='sigma-heat-map')], style={'display': 'inline-block'})
 ]), fluid=True, className="dbc dbc-row-selectable")
 
+
+
+
+
 #=====CREATE INTERACTIVE GRAPHS=============
+# Box plot for reticle analysis
+@app.callback(
+    Output("reticle", "figure"), 
+    Input("reticle-y", "value"),
+    Input("date-range", "start_date"),
+    Input("date-range", "end_date"))
+def generate_chart(y, start_date, end_date):
+    filtered_data = df.query("date >= @start_date and date <= @end_date")
+    fig = px.box(filtered_data, x="Tool", y=y, color="RETICLE", notched=True, hover_data=[filtered_data['Lot'], filtered_data['Wfr'],  filtered_data['DEV']], category_orders={"Tool": tooll})
+    fig.add_hline(y=target, line_width=1, line_dash="dash", line_color="black")
+    return fig
+
+# Heat map for CD sigma analysis
+@app.callback(
+    Output("sigma-heat-map", "figure"),
+    Input("tool_list", "value"), 
+    Input("date-range", "start_date"),
+    Input("date-range", "end_date"))
+def generate_chart(tool, start_date, end_date):
+    # Create heat map for CD sigma analysis. A dictionary of df's is created for each unit and then concatenated into one df
+    # Heat map is created by grouping by date and Tool_unit and then taking the std of MP1
+    unitl = ['ARC', 'COAT', 'CHUCK', 'PEB', 'DVLP']
+    heatmapdfd = {}
+    for unit in unitl:
+        heatmapdfd[unit] = df[['DateTime', 'date', 'Tool', unit, 'MP1']]
+        heatmapdfd[unit] = heatmapdfd[unit].rename(columns={unit: 'unit'})
+    heatmapdf = pd.concat(heatmapdfd.values(), ignore_index=True)
+    heatmapdf['Tool_unit'] = heatmapdf['Tool'] + '_' + heatmapdf['unit']
+    heatmapdf = heatmapdf.groupby(['date', 'Tool_unit'])['MP1'].apply(np.std).reset_index()
+    heatmap = go.Heatmap(z=heatmapdf['MP1'], x=heatmapdf['date'], y=heatmapdf['Tool_unit'], colorscale='RdBu_r')
+    # create the layout with categoryorder parameter
+    layout = go.Layout(title='CD Sigma Heatmap', xaxis=dict(categoryorder='category ascending'), yaxis=dict(categoryorder='category ascending'))
+    # create the figure
+    fig = go.Figure(data=[heatmap], layout=layout)
+    return fig
+
+# Summary table update 
 @app.callback(
     Output('summary-table', 'data'),     # args are component id and then component property. component property is passed
     Input("date-range", "start_date"),  # in order to the chart function below
     Input("date-range", "end_date"),
     State('summary-table', 'data'))
-def tukey_ave_table(start_date, end_date, rows):
+def summary_table(start_date, end_date, rows):
     filtered_data = df.query("date >= @start_date and date <= @end_date")
     dfsummary = filtered_data.groupby('Tool')['MP1'].describe()  
     dfsummary = dfsummary.reset_index()
@@ -228,9 +322,10 @@ def tukey_ave_table(start_date, end_date, rows):
             try:
                 row[key] = dfsummary.at[i, value]
             except:
-                row[key] = 'NA'
+                row[key] = ''
     return rows
 
+# Tukey HSD table update for mean and sigma difference
 @app.callback(
     Output('tukey-table', 'data'),
     Input("tool_list", "value"),        # args are component id and then component property. component property is passed
@@ -238,16 +333,16 @@ def tukey_ave_table(start_date, end_date, rows):
     Input("date-range", "end_date"),
     Input("tukey-radio", "value"),
     State('tukey-table', 'data'))
-def tukey_ave_table(tool, start_date, end_date, onoff, rows):
+def tukey_table(tool, start_date, end_date, onoff, rows):
     # Tables for Tukey HSD results
     tukey_aved = {'tukey-ave-tool':'Tool', 'tukey-ave-grp1':'group1', 'tukey-ave-grp2':'group2', 'tukey-ave-meandiff':'meandiff','tukey-ave-padj':'p-adj'}
     tukey_sigd = {'tukey-sig-tool':'Tool', 'tukey-sig-grp1':'group1', 'tukey-sig-grp2':'group2', 'tukey-sig-meandiff':'meandiff', 'tukey-sig-padj':'p-adj'}    
     if onoff == 'OFF':
         for i, row in enumerate(rows):
             for key, value in tukey_aved.items():
-                row[key] = 'off'
+                row[key] = ''
             for key, value in tukey_sigd.items():
-                row[key] = 'off'
+                row[key] = ''
         return rows
     else:
         filtered_data = df.query("date >= @start_date and date <= @end_date")
@@ -256,7 +351,7 @@ def tukey_ave_table(tool, start_date, end_date, onoff, rows):
 
         # get pairwise tukey HSD results for mean difference
         tukey_results = pd.DataFrame(columns=['Tool'])
-        unitl = ['iARC', 'COAT', 'CHUCK', 'PEB', 'DVLP']
+        unitl = ['ARC', 'COAT', 'CHUCK', 'PEB', 'DVLP']
         for tool in dftooll['Tool'].unique():
             for unit in unitl:
                 df_tool = dftooll[dftooll['Tool'] == tool]
@@ -267,10 +362,26 @@ def tukey_ave_table(tool, start_date, end_date, onoff, rows):
         tukey_results = tukey_results[tukey_results['reject'] != False]  # remove rows where reject is False since not significant
         dftukey_ave = tukey_results.sort_values(['Tool', 'group1']).drop(['lower', 'upper', 'reject'], axis=1).reset_index()
         dftukey_ave = dftukey_ave.round(2)
+        tukeytbld = {}
+        grpl = ['group1', 'group2']
+        for grp in grpl:
+            tukeytbld[grp] = dftukey_ave[['Tool', grp]]
+            tukeytbld[grp] = tukeytbld[grp].rename(columns={grp: 'group'})
+        dftukeyhl = pd.concat(tukeytbld.values(), ignore_index=True)
+        dftukeyhl['Tool-group'] = dftukeyhl['Tool'] + '_' + dftukeyhl['group']
+        group_counts = dftukeyhl['Tool-group'].value_counts()
+        group_ave = group_counts[group_counts > 1].index.tolist()
+        # look for matches and update the values
+        for i in range(len(dftukey_ave)):
+            if dftukey_ave['Tool'][i] + '_' + dftukey_ave['group1'][i] in group_ave:
+                dftukey_ave.at[i, 'group1'] += '**'
+        for i in range(len(dftukey_ave)):
+            if dftukey_ave['Tool'][i] + '_' + dftukey_ave['group2'][i] in group_ave:
+                dftukey_ave.at[i, 'group2'] += '**'
 
         # get pairwise tukey HSD results for sigma difference
         dftooll['Lot_Wfr'] = dftooll.apply(lambda row: f"{row['Lot']}-{row['Wfr']}", axis=1) 
-        grouped = dftooll.groupby(['Lot_Wfr', 'Tool', 'DVLP', 'PEB', 'CHUCK', 'iARC', 'COAT'])
+        grouped = dftooll.groupby(['Lot_Wfr', 'Tool', 'DVLP', 'PEB', 'CHUCK', 'ARC', 'COAT'])
         dfsigmas = grouped['MP1'].apply(lambda x: np.std(x))  # calculate the sigma of each wfr
         dfsigmas = dfsigmas.reset_index()
         tukey_results = pd.DataFrame(columns=['Tool'])
@@ -284,18 +395,32 @@ def tukey_ave_table(tool, start_date, end_date, onoff, rows):
         tukey_results = tukey_results[tukey_results['reject'] != False]  # remove rows where reject is False since not significant
         dftukey_sig = tukey_results.sort_values(['Tool', 'group1']).drop(['lower', 'upper', 'reject'], axis=1).reset_index()
         dftukey_sig = dftukey_sig.round(2)
+        tukeytbld = {}
+        for grp in grpl:
+            tukeytbld[grp] = dftukey_sig[['Tool', grp]]
+            tukeytbld[grp] = tukeytbld[grp].rename(columns={grp: 'group'})
+        dftukeyhl = pd.concat(tukeytbld.values(), ignore_index=True)
+        dftukeyhl['Tool-group'] = dftukeyhl['Tool'] + '_' + dftukeyhl['group']
+        group_counts = dftukeyhl['Tool-group'].value_counts()
+        group_sig = group_counts[group_counts > 1].index.tolist()
+        for i in range(len(dftukey_sig)):
+            if dftukey_sig['Tool'][i] + '_' + dftukey_sig['group1'][i] in group_sig:
+                dftukey_sig.at[i, 'group1'] += '**'
+        for i in range(len(dftukey_sig)):
+            if dftukey_sig['Tool'][i] + '_' + dftukey_sig['group2'][i] in group_sig:
+                dftukey_sig.at[i, 'group2'] += '**'
 
         for i, row in enumerate(rows):
             for key, value in tukey_aved.items():
                 try:
                     row[key] = dftukey_ave.at[i, value]
                 except:
-                    row[key] = 'NA'
+                    row[key] = ''
             for key, value in tukey_sigd.items():
                 try:
                     row[key] = dftukey_sig.at[i, value]
                 except:
-                    row[key] = 'NA'
+                    row[key] = ''
         return rows
 
 # Create plotly express line chart
@@ -314,7 +439,7 @@ def update_line_chart(tool, start_date, end_date, y, limits):    # callback func
         ,category_orders={'Tool':tooll}  # can manually set colors color_discrete_sequence = ['darkred', 'dodgerblue', 'green', 'tan']
         ,color_discrete_sequence = ['darkorange', 'dodgerblue', 'green', 'darkviolet']
         ,line_shape="hv"
-        ,hover_data=['Lot', 'Wfr', 'Slot', 'iARC', 'COAT', 'CHUCK', 'PEB', 'DVLP', 'Site', 'Xmm', 'Ymm']
+        ,hover_data=['Lot', 'Wfr', 'DEV', 'RETICLE', 'Slot', 'ARC', 'COAT', 'CHUCK', 'PEB', 'DVLP', 'Site', 'Xmm', 'Ymm']
         ,markers=True)
     #fig.update_traces(line_color='#456987')
     fig.update_traces(mode="markers")
@@ -333,7 +458,7 @@ def update_line_chart(tool, start_date, end_date, y, limits):    # callback func
     Input("limit-slider", "value"))
 def generate_chart(y, start_date, end_date, unit, limits):
     filtered_data = df.query("date >= @start_date and date <= @end_date")
-    fig = px.box(filtered_data, x="Tool", y=y, color=unit, notched=True, hover_data=[filtered_data['Lot'], filtered_data['Wfr'], filtered_data['Site']], category_orders={"Tool": tooll})
+    fig = px.box(filtered_data, x="Tool", y=y, color=unit, notched=True, hover_data=[filtered_data['Lot'], filtered_data['Wfr'],  filtered_data['Site']], category_orders={"Tool": tooll})
     fig.add_hline(y=limits[0], line_width=2, line_dash="dash", line_color="red")
     fig.add_hline(y=limits[1], line_width=2, line_dash="dash", line_color="red")
     fig.add_hline(y=target, line_width=1, line_dash="dash", line_color="black")
@@ -411,7 +536,7 @@ def generate_chart(lotID, wfrID, radio, cntr_limits):
             colorbar={'title': dfcntr['MP'].iloc[0]}
             ))
     #title = str(dfcntr['DateTime'].iloc[0]) + " Edge R²= " + str(r2)
-    title = str(dfcntr['DateTime'].iloc[0])[:19] + ' Lot: ' + dfcntr['Lot'].iloc[0] + ' Wfr: ' + dfcntr['Wfr'].iloc[0] + ' Slot:' + dfcntr['Slot'].iloc[0] + '<br>Tool: ' + dfcntr['Tool'].iloc[0] + ' ' + dfcntr['COAT'].iloc[0] + ' ' + dfcntr['CHUCK'].iloc[0] + ' ' + dfcntr['PEB'].iloc[0] + ' ' + dfcntr['DVLP'].iloc[0]+ ' iARC: ' + dfcntr['iARC'].iloc[0]
+    title = str(dfcntr['DateTime'].iloc[0])[:19] + ' Lot: ' + dfcntr['Lot'].iloc[0] + ' Wfr: ' + dfcntr['Wfr'].iloc[0] + ' Slot:' + dfcntr['Slot'].iloc[0] + '<br>Tool: ' + dfcntr['Tool'].iloc[0] + ' ' + dfcntr['COAT'].iloc[0] + ' ' + dfcntr['CHUCK'].iloc[0] + ' ' + dfcntr['PEB'].iloc[0] + ' ' + dfcntr['DVLP'].iloc[0] + ' ARC: ' + dfcntr['ARC'].iloc[0] +'<br>Dev: ' + dfcntr['DEV'].iloc[0] + ' Mask: ' + dfcntr['RETICLE'].iloc[0]
     fig.update_layout(title={'text': title, 'font': {'size': 12}})
     fig.add_shape(type="circle",
         xref="x", yref="y",
@@ -493,7 +618,7 @@ def generate_chart(lotID, wfrID, radio, cntr_limits):
             colorbar={'title': dfcntr['MP'].iloc[0]}
             ))
     #title = str(dfcntr['DateTime'].iloc[0]) + " Edge R²= " + str(r2)
-    title = str(dfcntr['DateTime'].iloc[0])[:19] + ' Lot: ' + dfcntr['Lot'].iloc[0] + ' Wfr: ' + dfcntr['Wfr'].iloc[0] + ' Slot:' + dfcntr['Slot'].iloc[0] + '<br>Tool: ' + dfcntr['Tool'].iloc[0] + ' ' + dfcntr['COAT'].iloc[0] + ' ' + dfcntr['CHUCK'].iloc[0] + ' ' + dfcntr['PEB'].iloc[0] + ' ' + dfcntr['DVLP'].iloc[0]+ ' iARC: ' + dfcntr['iARC'].iloc[0]
+    title = str(dfcntr['DateTime'].iloc[0])[:19] + ' Lot: ' + dfcntr['Lot'].iloc[0] + ' Wfr: ' + dfcntr['Wfr'].iloc[0] + ' Slot:' + dfcntr['Slot'].iloc[0] + '<br>Tool: ' + dfcntr['Tool'].iloc[0] + ' ' + dfcntr['COAT'].iloc[0] + ' ' + dfcntr['CHUCK'].iloc[0] + ' ' + dfcntr['PEB'].iloc[0] + ' ' + dfcntr['DVLP'].iloc[0] + ' ARC: ' + dfcntr['ARC'].iloc[0] +'<br>Dev: ' + dfcntr['DEV'].iloc[0] + ' Mask: ' + dfcntr['RETICLE'].iloc[0]
     fig.update_layout(title={'text': title, 'font': {'size': 12}})
     fig.add_shape(type="circle",
         xref="x", yref="y",
