@@ -1,5 +1,4 @@
 import pandas as pd
-import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.preprocessing import PolynomialFeatures  # scikit-learn modules
 from sklearn.linear_model import LinearRegression
@@ -305,7 +304,7 @@ app.layout = dbc.Container(html.Div([
     Input("date-range", "start_date"),
     Input("date-range", "end_date"),
     Input('chart-theme', 'value'))
-def generate_chart(y, start_date, end_date, chart_theme):
+def generate_bx_reticle(y, start_date, end_date, chart_theme):
     filtered_data = df.query("date >= @start_date and date <= @end_date")
     fig = px.box(filtered_data, x="Tool", y=y, color="RETICLE", notched=True, template=chart_theme, hover_data=[filtered_data['Lot'], filtered_data['Wfr'],  filtered_data['DEV']], category_orders={"Tool": tooll})
     fig.add_hline(y=target, line_width=1, line_dash="dash", line_color="black")
@@ -319,7 +318,7 @@ def generate_chart(y, start_date, end_date, chart_theme):
     Input("date-range", "end_date"),
     Input("chart-y", "value"),
     Input('chart-theme', 'value'))
-def generate_chart(tool, start_date, end_date, mpx, chart_theme):
+def generate_hm_cd_sigma(tool, start_date, end_date, mpx, chart_theme):
     # Create heat map for CD sigma analysis. A dictionary of df's is created for each unit and then concatenated into one df
     # Heat map is created by grouping by date and Tool_unit and then taking the std of MP1
     unitl = ['ARC', 'COAT', 'CHUCK', 'PEB', 'DVLP']
@@ -494,7 +493,7 @@ def update_line_chart(tool, start_date, end_date, mpx, limits, chart_theme):    
     Input("unit", "value"),
     Input("limit-slider", "value"),
     Input('chart-theme', 'value'))
-def generate_chart(y, start_date, end_date, unit, limits, chart_theme):
+def generate_bx_unit(y, start_date, end_date, unit, limits, chart_theme):
     filtered_data = df.query("date >= @start_date and date <= @end_date")
     fig = px.box(filtered_data, x="Tool", y=y, color=unit, notched=True, template=chart_theme, hover_data=[filtered_data['Lot'], filtered_data['Wfr'],  filtered_data['Site']], category_orders={"Tool": tooll})
     fig.add_hline(y=limits[0], line_width=2, line_dash="dash", line_color="red")
@@ -510,7 +509,7 @@ def generate_chart(y, start_date, end_date, unit, limits, chart_theme):
     Input("cntr1-radio", "value"),
     Input("cntr1-slider", "value"),
     Input('chart-theme', 'value'))
-def generate_chart(lotID, wfrID, radio, cntr_limits, chart_theme):
+def generate_cntr_1(lotID, wfrID, radio, cntr_limits, chart_theme):
     dfcntr = df.loc[(df['Lot'] == lotID) & (df['Wfr'] == wfrID )]
     dfcntr = dfcntr.drop(['Date', 'date', 'Target','LS','US'], axis=1)
     # Create model to predict MP1 where there was no measurement
@@ -610,7 +609,7 @@ def generate_chart(lotID, wfrID, radio, cntr_limits, chart_theme):
     Input("cntr2-radio", "value"),
     Input("cntr2-slider", "value"),
     Input('chart-theme', 'value'))
-def generate_chart(lotID, wfrID, radio, cntr_limits, chart_theme):
+def generate_cntr_2(lotID, wfrID, radio, cntr_limits, chart_theme):
     dfcntr = df.loc[(df['Lot'] == lotID) & (df['Wfr'] == wfrID )]
     dfcntr = dfcntr.drop(['Date', 'date','Target','LS','US'], axis=1)
     # Create model to predict MP1 where there was no measurement
@@ -699,4 +698,4 @@ def generate_chart(lotID, wfrID, radio, cntr_limits, chart_theme):
     return fig
 
 if __name__ == '__main__':
-    app.run_server(debug=True,port=8050)
+    app.run_server(debug=True)
