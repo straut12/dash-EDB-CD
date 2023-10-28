@@ -6,16 +6,14 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
 import statsmodels.stats.multicomp as multi
 
-import dash
-import dash_bootstrap_components as dbc
-from dash_bootstrap_templates import ThemeSwitchAIO
+                              # installed odfpy for excel/ods reading
+import dash_bootstrap_components as dbc  # installed dash_bootstrap_templates too
 from dash import Dash, dcc, html, State
 from dash import dash_table as dt
 import plotly.express as px
 import plotly.graph_objects as go
 import plotly.io as pio
 from dash.dependencies import Input, Output
-
 
 # Dash apps are Flask apps
 
@@ -90,38 +88,10 @@ df['DateTime'] = pd.to_datetime((df['DateTime'])) # converted _time from obj to 
 
 max_table_rows = 11
 
-#===START DASH AND CREATE LAYOUT OF TABLES/GRAPHS===============
-# Create a bright and dark theme for the dash app. The theme is used for the tables and page background
-
-# Create a custom dark theme for the charts. The color will match the dark theme color below
-custom_template = pio.templates['plotly_dark'] 
-
-theme_bright = dbc.themes.SANDSTONE
-theme_chart_bright = pio.templates['seaborn']  # available plotly themes: simple_white, plotly, plotly_dark, ggplot2, seaborn, plotly_white, none
-
-# available dash bootstrap dbc themes: BOOTSTRAP, CERULEAN, COSMO, CYBORG, DARKLY, FLATLY, JOURNAL, LITERA, LUMEN, LUX, MATERIA, MINTY, MORPH, PULSE, QUARTZ, SANDSTONE, SIMPLEX, SKETCHY, SLATE, SOLAR, SPACELAB, SUPERHERO, UNITED, VAPOR, YETI, ZEPHYR
-darktheme = "SUPERHERO"
-if darktheme == "SUPERHERO":
-    theme_dark = dbc.themes.SUPERHERO
-    custom_template.layout.paper_bgcolor = '#0f2537' # match the SUPERHERO theme
-    custom_template.layout.plot_bgcolor = '#ced4da'  # light gray plot background color
-elif darktheme == "SOLAR":
-    theme_dark = dbc.themes.SOLAR
-    custom_template.layout.paper_bgcolor = '#002b36' # match the SOLAR theme
-    custom_template.layout.plot_bgcolor = '#ced4da'  # light gray plot background color
-elif darktheme == "SLATE":
-    theme_dark = dbc.themes.SLATE
-    custom_template.layout.paper_bgcolor = '#272b30' # match the SOLAR theme
-    custom_template.layout.plot_bgcolor = '#ced4da'  # light gray plot background color
-elif darktheme == "DARKLY":
-    theme_dark = dbc.themes.DARKLY
-    custom_template.layout.paper_bgcolor = '#222222' # match the SOLAR theme
-    custom_template.layout.plot_bgcolor = '#ced4da'  # light gray plot background color
-
+custom_template = pio.templates['plotly_dark']  # Create a custom dark template. paper_bgcolor is closely matched to the dbc container background color
+custom_template.layout.paper_bgcolor = '#0b4655'  # figure background color (lighter gray than background)
+custom_template.layout.plot_bgcolor = '#ced4da' 
 pio.templates['custom_dark'] = custom_template
-theme_chart_dark = pio.templates['custom_dark']
-
-tukey_table_cell_highlight = '#cfb974'  # Color for highlighting a tukeyHSD flagged cell
 
 # background color -> #002b36    # gray dark
 # 'backgroundColor': 'rgb(40, 40, 40)' # Table header color
@@ -129,35 +99,50 @@ tukey_table_cell_highlight = '#cfb974'  # Color for highlighting a tukeyHSD flag
 # radio button color -> #b58900  # dark gold
 # slider bar color  -> #cfb974   # light gold
 
-#===START DASH AND CREATE LAYOUT OF TABLES/GRAPHS================
 
-app = dash.Dash(__name__, external_stylesheets=[theme_dark])
+#===START DASH AND CREATE LAYOUT OF TABLES/GRAPHS===========
+# Use dash bootstrap components (dbc) for styling
+dbc_css = "assets/dbc.css"
 
-title = html.H1("PROCESS DASHBOARD", style={'font-size': '18px'}) #'color': 'white',
+app = Dash(__name__, external_stylesheets=[dbc.themes.SOLAR, dbc_css])
+# available themes: BOOTSTRAP, CERULEAN, COSMO, CYBORG, DARKLY, FLATLY, JOURNAL, LITERA, LUMEN, LUX, MATERIA, MINTY, MORPH, PULSE, QUARTZ, SANDSTONE, SIMPLEX, SKETCHY, SLATE, SOLAR, SPACELAB, SUPERHERO, UNITED, VAPOR, YETI, ZEPHYR
 
-theme_switch = ThemeSwitchAIO(
-    aio_id="theme", themes=[theme_bright, theme_dark]
-)
-
-calendar = html.Div(["Date Range ",
+# Layout of the dash graphs, tables, drop down menus, etc
+# Using dbc container for styling/formatting
+app.layout = dbc.Container(html.Div([
+    html.Div(["Date Range",
         dcc.DatePickerRange(
             id="date-range",
             min_date_allowed=df["date"].min().date(),
             max_date_allowed=df["date"].max().date(),
             start_date=df["date"].min().date(),
             end_date=df["date"].max().date(),
-        )])
-
-tukey_radio = html.Div(["Tukey HSD ",
-        dcc.RadioItems(
+        )], style={'display': 'inline-block', 'width': '29%'}),
+    html.P("PROCESS DASHBOARD", style={'color': 'white', 'font-size': '18px', 'text-align': 'center', 'display': 'inline-flex', 'width': '29%'}),
+    html.Div(["Tukey Update ", dcc.RadioItems(
         id='tukey-radio', 
         options=[{'value': x, 'label': x}  # radio button labels and values
-                 for x in ['ON', 'OFF']],  # radio button labels and values
+                 for x in ['OFF', 'ON']],  # radio button labels and values
         value='OFF',   # Default
         labelStyle={'display': 'inline-block'}
-        )])
-
-summary_tableh = html.Div(["Summary Table", dt.DataTable(id='summary-table',
+        )], style={'display': 'inline-flex', 'width': '15%'}),
+    html.Div([
+        dcc.Dropdown(
+            id='chart-theme',
+            options=[
+                {'label': 'Dark Theme', 'value': 'custom_dark'},
+                {'label': 'Bright Theme', 'value': 'simple_white'},
+                {'label': 'Plotly', 'value': 'plotly'},
+                {'label': 'Plotly Dark', 'value': 'plotly_dark'},
+                {'label': 'ggplot2', 'value': 'ggplot2'},
+                {'label': 'Seaborn', 'value': 'seaborn'},
+                {'label': 'Plotly White', 'value': 'plotly_white'},
+                {'label': 'None', 'value': 'none'}
+            ],
+            value='custom_dark'
+        )], style={'display': 'inline-block', 'width': '25%'}),
+    html.Br(style={"line-height": "5"}),
+    html.Div(["Summary Table", dt.DataTable(id='summary-table',
         columns=[
             {'name': ['Summary Table', 'No'], 'id': 'no_rows'},
             {'name': ['Summary Table','Tool'], 'id': 'tool'},
@@ -171,12 +156,12 @@ summary_tableh = html.Div(["Summary Table", dt.DataTable(id='summary-table',
         editable=False,
         merge_duplicate_headers=True,
         style_cell={'textAlign': 'center'},
-        style_header={          #'backgroundColor': 'rgb(40, 40, 40)',
+        style_header={
+            'backgroundColor': 'rgb(40, 40, 40)',
             'fontWeight': 'bold'
         })
-        ])  # style={'display': 'inline-table', 'margin':'10px', 'width': '20%'}
-
-tukey_tableh = html.Div(["Top 10 Tukey HSD Results (each table update may take 3-5sec)", dt.DataTable(id='tukey-table',
+        ], style={'display': 'inline-table', 'margin':'10px', 'width': '20%'}),
+    html.Div(["Top 10 Tukey HSD Results (each table update may take 3-5sec)", dt.DataTable(id='tukey-table',
         columns=[
             {'name': ['Test Result on Means', 'No'], 'id': 'no_rows'},
             {'name': ['Test Result on Means','Tool'], 'id': 'tukey-ave-tool'},
@@ -198,28 +183,28 @@ tukey_tableh = html.Div(["Top 10 Tukey HSD Results (each table update may take 3
                     'column_id': 'tukey-ave-grp1',
                     'filter_query': '{tukey-ave-grp1} contains "**"'
                 },
-                'backgroundColor': tukey_table_cell_highlight,
+                'backgroundColor': '#052027',
             },
             {
                 'if': {
                     'column_id': 'tukey-ave-grp2',
                     'filter_query': '{tukey-ave-grp2} contains "**"'
                 },
-                'backgroundColor': tukey_table_cell_highlight,
+                'backgroundColor': '#052027',
             },
             {
                 'if': {
                     'column_id': 'tukey-sig-grp1',
                     'filter_query': '{tukey-sig-grp1} contains "**"'
                 },
-                'backgroundColor': tukey_table_cell_highlight,
+                'backgroundColor': '#052027',
             },
             {
                 'if': {
                     'column_id': 'tukey-sig-grp2',
                     'filter_query': '{tukey-sig-grp2} contains "**"'
                 },
-                'backgroundColor': tukey_table_cell_highlight,
+                'backgroundColor': '#052027',
             }
         ],
         editable=False,
@@ -227,156 +212,99 @@ tukey_tableh = html.Div(["Top 10 Tukey HSD Results (each table update may take 3
         sort_mode='multi',
         style_cell={'textAlign': 'center'},
         merge_duplicate_headers=True,
-        style_header={          #'backgroundColor': 'rgb(40, 40, 40)',
+        style_header={
+            'backgroundColor': 'rgb(40, 40, 40)',
             'fontWeight': 'bold',
         })
-        ])
-
-chart_range_slider = html.Div([dcc.RangeSlider(55, 75, 0.5, value=dflt_specl, tooltip={"placement": "bottom", "always_visible": False}, id='limit-slider')])
-
-chart_mpx_radio = html.Div(
+        ], style={'display': 'inline-table', 'margin':'10px', 'width': '75%'}),
+    html.Div([dcc.RangeSlider(55, 75, 0.5, value=dflt_specl, tooltip={"placement": "bottom", "always_visible": False}, id='limit-slider')], style={'display': 'inline-block', 'width': '100%'}),
+    html.Div('Tools', style={'display': 'inline-block', 'width': '10%'}),
+    html.Div(
     dcc.RadioItems(
         id='chart-y', 
         options=[{'value': x, 'label': x}  # radio button labels and values
                  for x in ['MP1', 'MP2']],  # radio button labels and values
         value='MP1',   # Default
         labelStyle={'display': 'inline-block'}
-        ))
-
-boxplt_mpx_radio = html.Div(
+        ), style={'display': 'inline-block', 'width': '40%'}),
+    html.Div(
         dcc.RadioItems(
         id='boxplt-y', 
         options=[{'value': x, 'label': x}  # radio button labels and values
                  for x in ['MP1', 'MP2']],  # radio button labels and values
         value='MP1',   # Default
         labelStyle={'display': 'inline-block'}
-        ))
-
-tool_checklist = html.Div(dcc.Checklist(
+        ), style={'display': 'inline-block', 'width': '50%'}),
+    html.Div(dcc.Checklist(
         id="tool_list",  # id names will be used by the callback to identify the components
         options=tooll, # list of the tools
         value=tooll, # default selections
-        inline=True))
-
-unit_list_radio = html.Div(
+        inline=True), style={'display': 'inline-block', 'width': '50%'}),
+    html.Div(
         dcc.RadioItems(
         id='unit', 
         options=[{'value': x, 'label': x}  # radio button labels and values
                 for x in ['ARC', 'COAT', 'CHUCK', 'PEB', 'DVLP']],  # radio button labels and values
         value='PEB',   # Default
         labelStyle={'display': 'inline-block'}
-        ))
-
-line_chart1 = html.Div([dcc.Graph(figure={}, id='linechart1')])  # figure is blank dict because created in callback below
-
-boxplot1 = html.Div([dcc.Graph(figure={}, id='box-plot1')])
-
-cntr1_radio = html.Div(
+        ), style={'display': 'inline-block', 'width': '50%'}),
+    html.Div([dcc.Graph(figure={}, id='linechart1')], style={'display': 'inline-block'}),  # figure is blank dict because created in callback below
+    html.Div([dcc.Graph(figure={}, id='box-plot1')], style={'display': 'inline-block'}),
+    html.Br(style={"line-height": "5"}),
+    html.Div(
     dcc.RadioItems(
         id='cntr1-radio', 
         options=[{'value': x, 'label': x}  # radio button labels and values
                  for x in ['Auto', 'Manual']],  # radio button labels and values
         value='Auto',   # Default
         labelStyle={'display': 'inline-block'}
-        ))
-
-cntr2_radio = html.Div(
+        ), style={'display': 'inline-block', 'width': 430}),
+    html.Div(
     dcc.RadioItems(
         id='cntr2-radio', 
         options=[{'value': x, 'label': x}  # radio button labels and values
                  for x in ['Auto', 'Manual']],  # radio button labels and values
         value='Auto',   # Default
         labelStyle={'display': 'inline-block'}
-        ))
-
-cntr1_range_slider = html.Div([dcc.RangeSlider(60, 70, 0.5, value=[60, 70], tooltip={"placement": "bottom", "always_visible": False}, id='cntr1-slider')]),
-
-cntr2_range_slider = html.Div([dcc.RangeSlider(60, 70, 0.5, value=[60, 70], tooltip={"placement": "bottom", "always_visible": False}, id='cntr2-slider')]),
-
-lot1_dd = html.Div([dcc.Dropdown(lotl, lotdflt1, id='lot1-dd')]),
-
-wfr1_dd = html.Div([dcc.Dropdown(wfrl, wfrdflt1, id='wfr1-dd')]),
-
-lot2_dd = html.Div([dcc.Dropdown(lotl, lotdflt2, id='lot2-dd')]),
-
-wfr2_dd = html.Div([dcc.Dropdown(wfrl, wfrdflt2, id='wfr2-dd')]),
-
-cntr_plot1 = html.Div([dcc.Graph(figure={}, id='cntr1')]),
-
-cntr_plot2 = html.Div([dcc.Graph(figure={}, id='cntr2')]), # , style={'display': 'inline-block', 'width': 430}
-
-reticle_mpx_radio = html.Div(["Reticle Analysis  ",
-    dcc.RadioItems(
-    id='reticle-y', 
-    options=[{'value': x, 'label': x}  # radio button labels and values
-                for x in ['MP1', 'MP2']],  # radio button labels and values
-    value='MP1',   # Default
-    labelStyle={'display': 'inline-block'}
-    )]),
-
-reticle_analysis_chart = html.Div([dcc.Graph(figure={}, id='reticle')]),
-
-heatmap_chart = html.Div([dcc.Graph(figure={}, id='sigma-heat-map')])
-
-# Layout of the dash graphs, tables, drop down menus, etc
-# Using dbc container for styling/formatting
-app.layout = dbc.Container([
-    dbc.Row([
-        dbc.Col(title, width={"size":9, "justify":"between"}),
-        dbc.Col(theme_switch, width={"size":3, "justify":"between"})]),
-    dbc.Row([
-        dbc.Col(calendar, width={"size":5, "justify":"left"}),
-        dbc.Col(tukey_radio, width={"size":7, "justify":"between"})]),
-    dbc.Row([
-        dbc.Col(summary_tableh, width={"size":4}),
-        dbc.Col(tukey_tableh, width={"size":8})]),
-    dbc.Row([
-        dbc.Col(chart_range_slider, width={"size":12})]),
-    dbc.Row([
-        dbc.Col(chart_mpx_radio, width={"size":6}),
-        dbc.Col(boxplt_mpx_radio, width={"size":6})]),
-    dbc.Row([
-        dbc.Col(tool_checklist, width={"size":6}),
-        dbc.Col(unit_list_radio, width={"size":6})]),
-    dbc.Row([
-        dbc.Col(line_chart1, width={"size":6}),
-        dbc.Col(boxplot1, width={"size":6})]),
-    dbc.Row([
-        dbc.Col(cntr1_radio, width={"size":4}),
-        dbc.Col(cntr2_radio, width={"size":4})]),
-    dbc.Row([
-        dbc.Col(cntr1_range_slider, width={"size":4}),
-        dbc.Col(cntr2_range_slider, width={"size":4})]),
-    dbc.Row([
-        dbc.Col(lot1_dd, width={"size":2}),
-        dbc.Col(wfr1_dd, width={"size":2}),
-        dbc.Col(lot2_dd, width={"size":2}),
-        dbc.Col(wfr2_dd, width={"size":2})]),
-    dbc.Row([
-        dbc.Col(cntr_plot1, width={"size":4}),
-        dbc.Col(cntr_plot2, width={"size":4})]),
-    dbc.Row([
-        dbc.Col(reticle_mpx_radio, width={"size":12})]),
-    dbc.Row([
-        dbc.Col(reticle_analysis_chart, width={"size":6}),
-        dbc.Col(heatmap_chart, width={"size":6})])
-    ], fluid=True, className="dbc dbc-row-selectable")
+        ), style={'display': 'inline-block', 'width': 430}),
+    html.Br(style={"line-height": "5"}),
+    html.Div([dcc.RangeSlider(60, 70, 0.5, value=[60, 70], tooltip={"placement": "bottom", "always_visible": False}, id='cntr1-slider')], style={'display': 'inline-block', 'width': 430}),
+    html.Div([dcc.RangeSlider(60, 70, 0.5, value=[60, 70], tooltip={"placement": "bottom", "always_visible": False}, id='cntr2-slider')], style={'display': 'inline-block', 'width': 430}),
+    html.Br(style={"line-height": "5"}),
+    html.Div([dcc.Dropdown(lotl, lotdflt1, id='lot1-dd')], style={'display': 'inline-block', 'width': 215}),
+    html.Div([dcc.Dropdown(wfrl, wfrdflt1, id='wfr1-dd')], style={'display': 'inline-block', 'width': 215}),
+    html.Div([dcc.Dropdown(lotl, lotdflt2, id='lot2-dd')], style={'display': 'inline-block', 'width': 215}),
+    html.Div([dcc.Dropdown(wfrl, wfrdflt2, id='wfr2-dd')], style={'display': 'inline-block', 'width': 215}),
+    html.Br(style={"line-height": "5"}),
+    html.Div([dcc.Graph(figure={}, id='cntr1')], style={'display': 'inline-block', 'width': 430}),
+    html.Div([dcc.Graph(figure={}, id='cntr2')], style={'display': 'inline-block', 'width': 430}),
+    html.Br(style={"line-height": "5"}),
+    html.Div(["Reticle Analysis  ",
+        dcc.RadioItems(
+        id='reticle-y', 
+        options=[{'value': x, 'label': x}  # radio button labels and values
+                 for x in ['MP1', 'MP2']],  # radio button labels and values
+        value='MP1',   # Default
+        labelStyle={'display': 'inline-block'}
+        )], style={'display': 'inline-flex', 'width': '50%'}),
+    html.Br(style={"line-height": "5"}),
+    html.Div([dcc.Graph(figure={}, id='reticle')], style={'display': 'inline-block'}),
+    html.Div([dcc.Graph(figure={}, id='sigma-heat-map')], style={'display': 'inline-block'})
+]), fluid=True, className="dbc dbc-row-selectable")
 
 
 
 
 
 #=====CREATE INTERACTIVE GRAPHS=============
-# Callbacks are used to update the graphs and tables when the user changes the inputs   
 # Box plot for reticle analysis
 @app.callback(
     Output("reticle", "figure"), 
     Input("reticle-y", "value"),
     Input("date-range", "start_date"),
     Input("date-range", "end_date"),
-    Input(ThemeSwitchAIO.ids.switch("theme"), "value"))
-def generate_bx_reticle(y, start_date, end_date, toggle):
-    chart_theme = theme_chart_bright if toggle else theme_chart_dark
+    Input('chart-theme', 'value'))
+def generate_bx_reticle(y, start_date, end_date, chart_theme):
     filtered_data = df.query("date >= @start_date and date <= @end_date")
     fig = px.box(filtered_data, x="Tool", y=y, color="RETICLE", notched=True, template=chart_theme, hover_data=[filtered_data['Lot'], filtered_data['Wfr'],  filtered_data['DEV']], category_orders={"Tool": tooll})
     fig.add_hline(y=target, line_width=1, line_dash="dash", line_color="black")
@@ -389,11 +317,10 @@ def generate_bx_reticle(y, start_date, end_date, toggle):
     Input("date-range", "start_date"),
     Input("date-range", "end_date"),
     Input("chart-y", "value"),
-    Input(ThemeSwitchAIO.ids.switch("theme"), "value"))
-def generate_hm_cd_sigma(tool, start_date, end_date, mpx, toggle):
+    Input('chart-theme', 'value'))
+def generate_hm_cd_sigma(tool, start_date, end_date, mpx, chart_theme):
     # Create heat map for CD sigma analysis. A dictionary of df's is created for each unit and then concatenated into one df
     # Heat map is created by grouping by date and Tool_unit and then taking the std of MP1
-    chart_theme = theme_chart_bright if toggle else theme_chart_dark
     unitl = ['ARC', 'COAT', 'CHUCK', 'PEB', 'DVLP']
     heatmapdfd = {}
     for unit in unitl:
@@ -412,10 +339,10 @@ def generate_hm_cd_sigma(tool, start_date, end_date, mpx, toggle):
 # Summary table update 
 @app.callback(
     Output('summary-table', 'data'),     # args are component id and then component property. component property is passed
-    Input('date-range', 'start_date'),  # in order to the chart function below
-    Input('date-range', 'end_date'),
+    Input("date-range", "start_date"),  # in order to the chart function below
+    Input("date-range", "end_date"),
     State('summary-table', 'data'),
-    Input('chart-y', 'value'))
+    Input("chart-y", "value"))
 def summary_table(start_date, end_date, rows, mpx):
     filtered_data = df.query("date >= @start_date and date <= @end_date")
     dfsummary = filtered_data.groupby('Tool')[mpx].describe()  
@@ -539,9 +466,8 @@ def tukey_table(tool, start_date, end_date, onoff, rows, mpx):
     Input("date-range", "end_date"),
     Input("chart-y", "value"),
     Input("limit-slider", "value"),
-    Input(ThemeSwitchAIO.ids.switch("theme"), "value"))
-def update_line_chart(tool, start_date, end_date, mpx, limits, toggle):    # callback function arg 'tool' refers to the component property of the input or "value" above
-    chart_theme = theme_chart_bright if toggle else theme_chart_dark
+    Input('chart-theme', 'value'))
+def update_line_chart(tool, start_date, end_date, mpx, limits, chart_theme):    # callback function arg 'tool' refers to the component property of the input or "value" above
     filtered_data = df.query("date >= @start_date and date <= @end_date")  # Get only data within time frame selected
     mask = filtered_data.Tool.isin(tool)                                   # Create a panda series with True/False of only tools selected 
     fig = px.line(filtered_data[mask],   
@@ -566,9 +492,8 @@ def update_line_chart(tool, start_date, end_date, mpx, limits, toggle):    # cal
     Input("date-range", "end_date"),
     Input("unit", "value"),
     Input("limit-slider", "value"),
-    Input(ThemeSwitchAIO.ids.switch("theme"), "value"))
-def generate_bx_unit(y, start_date, end_date, unit, limits, toggle):
-    chart_theme = theme_chart_bright if toggle else theme_chart_dark
+    Input('chart-theme', 'value'))
+def generate_bx_unit(y, start_date, end_date, unit, limits, chart_theme):
     filtered_data = df.query("date >= @start_date and date <= @end_date")
     fig = px.box(filtered_data, x="Tool", y=y, color=unit, notched=True, template=chart_theme, hover_data=[filtered_data['Lot'], filtered_data['Wfr'],  filtered_data['Site']], category_orders={"Tool": tooll})
     fig.add_hline(y=limits[0], line_width=2, line_dash="dash", line_color="red")
@@ -583,9 +508,8 @@ def generate_bx_unit(y, start_date, end_date, unit, limits, toggle):
     Input("wfr1-dd", "value"),
     Input("cntr1-radio", "value"),
     Input("cntr1-slider", "value"),
-    Input(ThemeSwitchAIO.ids.switch("theme"), "value"))
-def generate_cntr_1(lotID, wfrID, radio, cntr_limits, toggle):
-    chart_theme = theme_chart_bright if toggle else theme_chart_dark
+    Input('chart-theme', 'value'))
+def generate_cntr_1(lotID, wfrID, radio, cntr_limits, chart_theme):
     dfcntr = df.loc[(df['Lot'] == lotID) & (df['Wfr'] == wfrID )]
     dfcntr = dfcntr.drop(['Date', 'date', 'Target','LS','US'], axis=1)
     # Create model to predict MP1 where there was no measurement
@@ -684,9 +608,8 @@ def generate_cntr_1(lotID, wfrID, radio, cntr_limits, toggle):
     Input("wfr2-dd", "value"),
     Input("cntr2-radio", "value"),
     Input("cntr2-slider", "value"),
-    Input(ThemeSwitchAIO.ids.switch("theme"), "value"))
-def generate_cntr_2(lotID, wfrID, radio, cntr_limits, toggle):
-    chart_theme = theme_chart_bright if toggle else theme_chart_dark
+    Input('chart-theme', 'value'))
+def generate_cntr_2(lotID, wfrID, radio, cntr_limits, chart_theme):
     dfcntr = df.loc[(df['Lot'] == lotID) & (df['Wfr'] == wfrID )]
     dfcntr = dfcntr.drop(['Date', 'date','Target','LS','US'], axis=1)
     # Create model to predict MP1 where there was no measurement
