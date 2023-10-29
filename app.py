@@ -9,7 +9,7 @@ import statsmodels.stats.multicomp as multi
 import dash
 import dash_bootstrap_components as dbc
 from dash_bootstrap_templates import ThemeSwitchAIO
-from dash import Dash, dcc, html, State
+from dash import dcc, html, State
 from dash import dash_table as dt
 import plotly.express as px
 import plotly.graph_objects as go
@@ -25,7 +25,7 @@ from dash.dependencies import Input, Output
 # https://hellodash.pythonanywhere.com/adding-themes/datatable
 # https://community.plotly.com/t/styling-dash-datatable-select-rows-radio-button-and-checkbox/59466/3
 
-#============IMPORT DATA================
+#============IMPORT AND FORMAT DATA================
 
 # Tried pd.to_datetime(df['_time'], format="%Y-%m-%d").dt.floor("d") but it left .0000000 for the H:M. May have been ok.
 # DatetimeProperties.to_pydatetime is deprecated, in future version will return a Series containing python datetime objects instead of an ndarray. To retain the old behavior, call `np.array` on the result
@@ -61,32 +61,18 @@ tooll = np.sort(df['Tool'].unique()).tolist() # get a unique list of tools for t
 lotl = np.sort(df['Lot'].unique()).tolist()
 wfrl = np.sort(df['Wfr'].unique()).tolist()
 # DO NOT USE 1,2,3 for labels. Can have confusing results due to int vs str scenarios
-
 # +00:00 is Hour Min offset from UTC
 # the freq/period parameter in pandas.date_range refers to the interval between dates generated. The default is "D", but it could be hourly, monthly, or yearly. 
-
 #df['_time'] = pd.to_datetime(df['date'], unit='d', origin='1899-12-30') # Changed the decimal by a little and removed the +00:00
 df['DateTime'] = pd.to_datetime((df['DateTime'])) # converted _time from obj to datetime64 with tz=UTC
 
-#for x in ["date"]:    # another method
-#    if x in df.columns:
-#        df[x] = pd.to_datetime(df['_time'], format="%Y-%m-%d").dt.floor("d")
+dfcntr_dt = df.groupby(['DateTime', 'Tool', 'Lot', 'Wfr', 'CHUCK', 'PEB', 'DVLP']).agg({'MP1': 'mean', 'MP2': 'mean'}).reset_index() # selectable df table for contour plotsdfcntr_dt['DateTime'] = dfcntr_dt['DateTime'].dt.tz_convert(None)
+dfcntr_dt['DateTime'] = dfcntr_dt['DateTime'].dt.tz_convert(None)
+dfcntr_dt['MP1'] = dfcntr_dt['MP1'].round(2)
+dfcntr_dt['MP2'] = dfcntr_dt['MP2'].round(2)
 
-#==CREATE TABLES/GRAPHS THAT ARE NOT CREATED WITH CALLBACK (not interactive)=====
-# Create summary dataframe with statistics
-#dfsummary = df.groupby('Tool')['MP1'].describe()  # describe outputs a dataframe
-#dfsummary = dfsummary.reset_index()  # this moves the index
-'''dfsummary.style.format({   # this would work if the values were floats. However they
-    "mean": "{:.1f}",         # were strings after the describe functions so had to use
-    "std": "{:.1f}",          # the map function below
-})'''
-#dfsummary = dfsummary.drop(['min', '25%', '50%', '75%', 'max'], axis=1)
-#dfsummary.loc[:, "mean"] = dfsummary["mean"].map('{:.1f}'.format)
-#dfsummary.loc[:, "std"] = dfsummary["std"].map('{:.1f}'.format)
+#============END IMPORT DATA================
 
-#table = dbc.Table.from_dataframe(dfsummary, striped=True, bordered=True, hover=True)
-
-#histogram1 = px.histogram(df, x="CD", nbins=30)
 
 max_table_rows = 11
 
@@ -301,9 +287,25 @@ lot2_dd = html.Div([dcc.Dropdown(lotl, lotdflt2, id='lot2-dd')]),
 
 wfr2_dd = html.Div([dcc.Dropdown(wfrl, wfrdflt2, id='wfr2-dd')]),
 
+cntr_dt_deselect_btn = html.Div([html.Button('Deselect', id='cntr-dt-deselect-btn')]),
+
 cntr_plot1 = html.Div([dcc.Graph(figure={}, id='cntr1')]),
 
 cntr_plot2 = html.Div([dcc.Graph(figure={}, id='cntr2')]), # , style={'display': 'inline-block', 'width': 430}
+
+contour_table = html.Div([
+    dt.DataTable(
+        id='cntr-table',
+        columns=[{'name': col, 'id': col} for col in dfcntr_dt.columns],
+        data=dfcntr_dt.to_dict('records'),
+        #page_size=5,
+        style_table={'height': '380px', 'overflowY': 'auto'},
+        row_selectable='single',
+        fixed_rows={'headers': True, 'data': 0},
+        sort_action='native',
+        sort_mode='multi',
+        style_cell={'textAlign': 'center'}
+    )])
 
 reticle_mpx_radio = html.Div(["Reticle Analysis  ",
     dcc.RadioItems(
@@ -321,6 +323,7 @@ heatmap_chart = html.Div([dcc.Graph(figure={}, id='sigma-heat-map')])
 # Layout of the dash graphs, tables, drop down menus, etc
 # Using dbc container for styling/formatting
 app.layout = dbc.Container([
+    # Summary and Tukey Tables
     dbc.Row([
         dbc.Col(title, width={"size":9, "justify":"between"}),
         dbc.Col(theme_switch, width={"size":3, "justify":"between"})]),
@@ -330,6 +333,7 @@ app.layout = dbc.Container([
     dbc.Row([
         dbc.Col(summary_tableh, width={"size":4}),
         dbc.Col(tukey_tableh, width={"size":8})]),
+    # Charts and Boxplot
     dbc.Row([
         dbc.Col(chart_range_slider, width={"size":12})]),
     dbc.Row([
@@ -341,29 +345,30 @@ app.layout = dbc.Container([
     dbc.Row([
         dbc.Col(line_chart1, width={"size":6}),
         dbc.Col(boxplot1, width={"size":6})]),
+    # Contour Plots
     dbc.Row([
-        dbc.Col(cntr1_radio, width={"size":4}),
-        dbc.Col(cntr2_radio, width={"size":4})]),
+        dbc.Col(cntr1_radio, width={"size":3}),
+        dbc.Col(cntr2_radio, width={"size":3})]),
     dbc.Row([
-        dbc.Col(cntr1_range_slider, width={"size":4}),
-        dbc.Col(cntr2_range_slider, width={"size":4})]),
+        dbc.Col(cntr1_range_slider, width={"size":3}),
+        dbc.Col(cntr2_range_slider, width={"size":3})]),
     dbc.Row([
         dbc.Col(lot1_dd, width={"size":2}),
-        dbc.Col(wfr1_dd, width={"size":2}),
+        dbc.Col(wfr1_dd, width={"size":1}),
         dbc.Col(lot2_dd, width={"size":2}),
-        dbc.Col(wfr2_dd, width={"size":2})]),
+        dbc.Col(wfr2_dd, width={"size":1}),
+        dbc.Col(cntr_dt_deselect_btn, width={"size":1})]),
     dbc.Row([
-        dbc.Col(cntr_plot1, width={"size":4}),
-        dbc.Col(cntr_plot2, width={"size":4})]),
+        dbc.Col(cntr_plot1, width={"size":3}),
+        dbc.Col(cntr_plot2, width={"size":3}),
+        dbc.Col(contour_table, width={"size":6})]),
+    # Reticle boxplot and Heatmap
     dbc.Row([
         dbc.Col(reticle_mpx_radio, width={"size":12})]),
     dbc.Row([
         dbc.Col(reticle_analysis_chart, width={"size":6}),
         dbc.Col(heatmap_chart, width={"size":6})])
     ], fluid=True, className="dbc dbc-row-selectable")
-
-
-
 
 
 #=====CREATE INTERACTIVE GRAPHS=============
@@ -577,6 +582,7 @@ def generate_bx_unit(y, start_date, end_date, unit, limits, toggle):
     return fig
 
 # Create plotly go (graphical objects) for contour plots
+# Contour plot 1
 @app.callback(
     Output("cntr1", "figure"), 
     Input("lot1-dd", "value"),
@@ -677,16 +683,29 @@ def generate_cntr_1(lotID, wfrID, radio, cntr_limits, toggle):
         ) 
     return fig
 
+# Define a callback to update the selected rows when the button is clicked
+@app.callback(
+    Output('cntr-table', 'selected_rows'),
+    Input('cntr-dt-deselect-btn', 'n_clicks')
+)
+def update_selected_rows(n_clicks):
+    return []
+
 # 2nd Contour Map
 @app.callback(
-    Output("cntr2", "figure"), 
+    Output("cntr2", "figure"),
     Input("lot2-dd", "value"),
     Input("wfr2-dd", "value"),
     Input("cntr2-radio", "value"),
     Input("cntr2-slider", "value"),
-    Input(ThemeSwitchAIO.ids.switch("theme"), "value"))
-def generate_cntr_2(lotID, wfrID, radio, cntr_limits, toggle):
+    Input(ThemeSwitchAIO.ids.switch("theme"), "value"),
+    Input("cntr-table", "selected_rows"),
+    State("cntr-table", "data"))
+def generate_cntr_2(lotID, wfrID, radio, cntr_limits, toggle, selected_rows, data):
     chart_theme = theme_chart_dark if toggle else theme_chart_bright
+    if selected_rows:
+        lotID = data[selected_rows[0]]['Lot']
+        wfrID = data[selected_rows[0]]['Wfr']
     dfcntr = df.loc[(df['Lot'] == lotID) & (df['Wfr'] == wfrID )]
     dfcntr = dfcntr.drop(['Date', 'date','Target','LS','US'], axis=1)
     # Create model to predict MP1 where there was no measurement
