@@ -136,7 +136,7 @@ app = dash.Dash(__name__, external_stylesheets=[theme_dark])
 title = html.H1("PROCESS DASHBOARD", style={'font-size': '18px'}) #'color': 'white',
 
 theme_switch = ThemeSwitchAIO(
-    aio_id="theme", themes=[theme_bright, theme_dark]
+    aio_id="theme", themes=[theme_dark, theme_bright]
 )
 
 calendar = html.Div(["Date Range ",
@@ -267,7 +267,7 @@ unit_list_radio = html.Div(
         labelStyle={'display': 'inline-block'}
         ))
 
-line_chart1 = html.Div([dcc.Graph(figure={}, id='linechart1')])  # figure is blank dict because created in callback below
+line_chart1 = html.Div([dcc.Graph(figure={}, id='line-chart1')])  # figure is blank dict because created in callback below
 
 boxplot1 = html.Div([dcc.Graph(figure={}, id='box-plot1')])
 
@@ -376,7 +376,7 @@ app.layout = dbc.Container([
     Input("date-range", "end_date"),
     Input(ThemeSwitchAIO.ids.switch("theme"), "value"))
 def generate_bx_reticle(y, start_date, end_date, toggle):
-    chart_theme = theme_chart_bright if toggle else theme_chart_dark
+    chart_theme = theme_chart_dark if toggle else theme_chart_bright
     filtered_data = df.query("date >= @start_date and date <= @end_date")
     fig = px.box(filtered_data, x="Tool", y=y, color="RETICLE", notched=True, template=chart_theme, hover_data=[filtered_data['Lot'], filtered_data['Wfr'],  filtered_data['DEV']], category_orders={"Tool": tooll})
     fig.add_hline(y=target, line_width=1, line_dash="dash", line_color="black")
@@ -393,7 +393,7 @@ def generate_bx_reticle(y, start_date, end_date, toggle):
 def generate_hm_cd_sigma(tool, start_date, end_date, mpx, toggle):
     # Create heat map for CD sigma analysis. A dictionary of df's is created for each unit and then concatenated into one df
     # Heat map is created by grouping by date and Tool_unit and then taking the std of MP1
-    chart_theme = theme_chart_bright if toggle else theme_chart_dark
+    chart_theme = theme_chart_dark if toggle else theme_chart_bright
     unitl = ['ARC', 'COAT', 'CHUCK', 'PEB', 'DVLP']
     heatmapdfd = {}
     for unit in unitl:
@@ -533,7 +533,7 @@ def tukey_table(tool, start_date, end_date, onoff, rows, mpx):
 
 # Create plotly express line chart
 @app.callback(
-    Output("linechart1", "figure"),    # args are component id and then component property
+    Output("line-chart1", "figure"),    # args are component id and then component property
     Input("tool_list", "value"),        # args are component id and then component property. component property is passed
     Input("date-range", "start_date"),  # in order to the chart function below
     Input("date-range", "end_date"),
@@ -541,7 +541,7 @@ def tukey_table(tool, start_date, end_date, onoff, rows, mpx):
     Input("limit-slider", "value"),
     Input(ThemeSwitchAIO.ids.switch("theme"), "value"))
 def update_line_chart(tool, start_date, end_date, mpx, limits, toggle):    # callback function arg 'tool' refers to the component property of the input or "value" above
-    chart_theme = theme_chart_bright if toggle else theme_chart_dark
+    chart_theme = theme_chart_dark if toggle else theme_chart_bright
     filtered_data = df.query("date >= @start_date and date <= @end_date")  # Get only data within time frame selected
     mask = filtered_data.Tool.isin(tool)                                   # Create a panda series with True/False of only tools selected 
     fig = px.line(filtered_data[mask],   
@@ -568,7 +568,7 @@ def update_line_chart(tool, start_date, end_date, mpx, limits, toggle):    # cal
     Input("limit-slider", "value"),
     Input(ThemeSwitchAIO.ids.switch("theme"), "value"))
 def generate_bx_unit(y, start_date, end_date, unit, limits, toggle):
-    chart_theme = theme_chart_bright if toggle else theme_chart_dark
+    chart_theme = theme_chart_dark if toggle else theme_chart_bright
     filtered_data = df.query("date >= @start_date and date <= @end_date")
     fig = px.box(filtered_data, x="Tool", y=y, color=unit, notched=True, template=chart_theme, hover_data=[filtered_data['Lot'], filtered_data['Wfr'],  filtered_data['Site']], category_orders={"Tool": tooll})
     fig.add_hline(y=limits[0], line_width=2, line_dash="dash", line_color="red")
@@ -585,7 +585,7 @@ def generate_bx_unit(y, start_date, end_date, unit, limits, toggle):
     Input("cntr1-slider", "value"),
     Input(ThemeSwitchAIO.ids.switch("theme"), "value"))
 def generate_cntr_1(lotID, wfrID, radio, cntr_limits, toggle):
-    chart_theme = theme_chart_bright if toggle else theme_chart_dark
+    chart_theme = theme_chart_dark if toggle else theme_chart_bright
     dfcntr = df.loc[(df['Lot'] == lotID) & (df['Wfr'] == wfrID )]
     dfcntr = dfcntr.drop(['Date', 'date', 'Target','LS','US'], axis=1)
     # Create model to predict MP1 where there was no measurement
@@ -686,7 +686,7 @@ def generate_cntr_1(lotID, wfrID, radio, cntr_limits, toggle):
     Input("cntr2-slider", "value"),
     Input(ThemeSwitchAIO.ids.switch("theme"), "value"))
 def generate_cntr_2(lotID, wfrID, radio, cntr_limits, toggle):
-    chart_theme = theme_chart_bright if toggle else theme_chart_dark
+    chart_theme = theme_chart_dark if toggle else theme_chart_bright
     dfcntr = df.loc[(df['Lot'] == lotID) & (df['Wfr'] == wfrID )]
     dfcntr = dfcntr.drop(['Date', 'date','Target','LS','US'], axis=1)
     # Create model to predict MP1 where there was no measurement
