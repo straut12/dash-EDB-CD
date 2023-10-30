@@ -359,8 +359,8 @@ app.layout = dbc.Container([
         dbc.Col(wfr2_dd, width={"size":1}),
         dbc.Col(cntr_dt_deselect_btn, width={"size":1})]),
     dbc.Row([
-        dbc.Col(cntr_plot1, width={"size":3}),
-        dbc.Col(cntr_plot2, width={"size":3}),
+        dbc.Col(cntr_plot1, width=3, style={'width': '430px'}),
+        dbc.Col(cntr_plot2, width=3, style={'width': '430px'}),
         dbc.Col(contour_table, width={"size":6})]),
     # Reticle boxplot and Heatmap
     dbc.Row([
