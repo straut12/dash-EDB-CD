@@ -66,10 +66,28 @@ wfrl = np.sort(df['Wfr'].unique()).tolist()
 #df['_time'] = pd.to_datetime(df['date'], unit='d', origin='1899-12-30') # Changed the decimal by a little and removed the +00:00
 df['DateTime'] = pd.to_datetime((df['DateTime'])) # converted _time from obj to datetime64 with tz=UTC
 
-dfcntr_dt = df.groupby(['DateTime', 'Tool', 'Lot', 'Wfr', 'CHUCK', 'PEB', 'DVLP']).agg({'MP1': 'mean', 'MP2': 'mean'}).reset_index() # selectable df table for contour plotsdfcntr_dt['DateTime'] = dfcntr_dt['DateTime'].dt.tz_convert(None)
+dfcntr_dt = df.groupby(['DateTime', 'Tool', 'Lot', 'Wfr', 'CHUCK', 'PEB', 'DVLP'])['MP1'].agg(['mean', 'std']).reset_index() # selectable df table for contour plotsdfcntr_dt['DateTime'] = dfcntr_dt['DateTime'].dt.tz_convert(None)
+dfcntr_dt.columns = ['DateTime', 'Tool', 'Lot', 'Wfr', 'CHUCK', 'PEB', 'DVLP', 'MP1A', 'MP1S']
 dfcntr_dt['DateTime'] = dfcntr_dt['DateTime'].dt.tz_convert(None)
-dfcntr_dt['MP1'] = dfcntr_dt['MP1'].round(2)
-dfcntr_dt['MP2'] = dfcntr_dt['MP2'].round(2)
+dfcntr_dt['MP1A'] = dfcntr_dt['MP1A'].round(1)
+dfcntr_dt['MP1S'] = dfcntr_dt['MP1S'].round(1)
+
+dfmask = df.groupby(['Tool', 'DEV', 'RETICLE', 'Tool-Mask']).agg({'DENSITY':'mean', 'FOCUSOFFSET':'mean', 'MASKCD':'mean', 'DOSE':'mean', 'MP1':'mean'}).reset_index()
+# Calculate Tool-Mask offset compared to target
+dfmask['MP1'] = target - dfmask['MP1']
+dfmask['MP1'] = dfmask['MP1'].round(1)
+# Compute the absolute values of 'MP1'
+dfmask['MP1_abs'] = dfmask['MP1'].abs().round(1)
+# Get the top 10 rows with the largest absolute values of 'MP1'
+dfmasktop10 = dfmask.nlargest(10, 'MP1_abs')[['Tool', 'Tool-Mask', 'MP1', 'MP1_abs']].copy()
+# Sort df_top10 by 'MP1_abs' in descending order
+dfmasktop10 = dfmasktop10.sort_values('MP1_abs', ascending=False)
+
+# Define a color map
+color_map = {'CD101': '#636efa', 'CD102': '#ef553b', 'CD103': '#00cc96', 'CD104': '#ab63fa'}  # Replace with your actual tools and desired colors
+
+# Map the 'Tool' column to colors
+dfmasktop10['color'] = dfmasktop10['Tool'].map(color_map)
 
 #============END IMPORT DATA================
 
@@ -299,7 +317,7 @@ contour_table = html.Div([
         columns=[{'name': col, 'id': col} for col in dfcntr_dt.columns],
         data=dfcntr_dt.to_dict('records'),
         #page_size=5,
-        style_table={'height': '380px', 'overflowY': 'auto'},
+        style_table={'height': '380px', 'overflowX': 'auto', 'overflowY': 'auto'},
         row_selectable='single',
         fixed_rows={'headers': True, 'data': 0},
         sort_action='native',
@@ -315,6 +333,12 @@ reticle_mpx_radio = html.Div(["Reticle Analysis  ",
     value='MP1',   # Default
     labelStyle={'display': 'inline-block'}
     )]),
+
+dose2size_maskCD_chart = html.Div([dcc.Graph(figure={}, id='dose2size_maskCD')]),
+
+focus_offset_mask_density_chart = html.Div([dcc.Graph(figure={}, id='focus_offset_mask_density')]),
+
+reticle_offset_pareto = html.Div([dcc.Graph(figure={}, id='reticle_offset')]),
 
 reticle_analysis_chart = html.Div([dcc.Graph(figure={}, id='reticle')]),
 
@@ -362,6 +386,11 @@ app.layout = dbc.Container([
         dbc.Col(cntr_plot1, width=3, style={'width': '430px'}),
         dbc.Col(cntr_plot2, width=3, style={'width': '430px'}),
         dbc.Col(contour_table, width={"size":6})]),
+    # Reticle and Focus Analysis
+    dbc.Row([
+        dbc.Col(dose2size_maskCD_chart, width={"size":3}),
+        dbc.Col(focus_offset_mask_density_chart, width={"size":3}),
+        dbc.Col(reticle_offset_pareto, width={"size":3})]),
     # Reticle boxplot and Heatmap
     dbc.Row([
         dbc.Col(reticle_mpx_radio, width={"size":12})]),
@@ -385,6 +414,51 @@ def generate_bx_reticle(y, start_date, end_date, toggle):
     filtered_data = df.query("date >= @start_date and date <= @end_date")
     fig = px.box(filtered_data, x="Tool", y=y, color="RETICLE", notched=True, template=chart_theme, hover_data=[filtered_data['Lot'], filtered_data['Wfr'],  filtered_data['DEV']], category_orders={"Tool": tooll})
     fig.add_hline(y=target, line_width=1, line_dash="dash", line_color="black")
+    return fig
+
+# Pareto for Reticle Offset
+@app.callback(
+    Output("reticle_offset", "figure"), 
+    Input(ThemeSwitchAIO.ids.switch("theme"), "value"))
+def generate_reticle_offset_pareto(toggle):
+    chart_theme = theme_chart_dark if toggle else theme_chart_bright
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=dfmasktop10['Tool-Mask'], y=dfmasktop10['MP1'], name='Reticle Offset', marker_color=dfmasktop10['color']))
+    # Set up the layout with y-axes
+    fig.update_layout(
+        yaxis=dict(title='CD Delta to Target (nm)'),
+        template=chart_theme,
+        title='Top 10 Reticles with Offset from Target',
+        #yaxis2=dict(title='Cumulative Percentage', overlaying='y', side='right')
+    )
+    return fig
+
+# Scatter plot for Mask CD
+@app.callback(
+    Output("dose2size_maskCD", "figure"), 
+    Input(ThemeSwitchAIO.ids.switch("theme"), "value"))
+def generate_mask_cd_chart(toggle):
+    chart_theme = theme_chart_dark if toggle else theme_chart_bright
+    fig = px.scatter(dfmask, x='MASKCD', y='DOSE', color='Tool', template=chart_theme,
+                     labels={
+                     "MASKCD": "Mask CD (nm)",
+                     "DOSE": "Dose-to-Target (mJ)"
+                 })
+    fig.update_layout(title_text='Reticle Dose vs Mask CD')
+    return fig
+
+# Scatter plot for Focus offset vs pattern density
+@app.callback(
+    Output("focus_offset_mask_density", "figure"), 
+    Input(ThemeSwitchAIO.ids.switch("theme"), "value"))
+def generate_mask_cd_chart(toggle):
+    chart_theme = theme_chart_dark if toggle else theme_chart_bright
+    fig = px.scatter(dfmask, x='DENSITY', y='FOCUSOFFSET', color='Tool', template=chart_theme,
+                     labels={
+                     "DENSITY": "Through-out Rate %",
+                     "FOCUSOFFSET": "Focus Offset (um)"
+                 })
+    fig.update_layout(title_text='Reticle Focus Offsets')
     return fig
 
 # Heat map for CD sigma analysis
@@ -673,6 +747,8 @@ def generate_cntr_1(lotID, wfrID, radio, cntr_limits, toggle):
             )
     title = str(dfcntr['DateTime'].iloc[0])[:19] + ' Lot: ' + dfcntr['Lot'].iloc[0] + ' Wfr: ' + dfcntr['Wfr'].iloc[0] + ' Slot:' + dfcntr['Slot'].iloc[0] + '<br>Tool: ' + dfcntr['Tool'].iloc[0] + ' ' + dfcntr['COAT'].iloc[0] + ' ' + dfcntr['CHUCK'].iloc[0] + ' ' + dfcntr['PEB'].iloc[0] + ' ' + dfcntr['DVLP'].iloc[0] + ' ARC: ' + dfcntr['ARC'].iloc[0] +'<br>Dev: ' + dfcntr['DEV'].iloc[0] + ' Mask: ' + dfcntr['RETICLE'].iloc[0]  + ' ERMSE: ' + str(round(min_rmse, 2)) + 'nm (' + str(min_pd) + ')'
     fig.update_layout(title={'text': title, 'font': {'size': 12}}, template=chart_theme)
+    fig.update_xaxes(title_text='Xmm')
+    fig.update_yaxes(title_text='Ymm')
     fig.add_shape(type="circle",
         xref="x", yref="y",
         x0=-150, y0=-150,
@@ -683,7 +759,7 @@ def generate_cntr_1(lotID, wfrID, radio, cntr_limits, toggle):
         ) 
     return fig
 
-# Define a callback to update the selected rows when the button is clicked
+# Define a callback to deselect the row when the deselect button is clicked
 @app.callback(
     Output('cntr-table', 'selected_rows'),
     Input('cntr-dt-deselect-btn', 'n_clicks')
@@ -783,6 +859,8 @@ def generate_cntr_2(lotID, wfrID, radio, cntr_limits, toggle, selected_rows, dat
             ))
     title = str(dfcntr['DateTime'].iloc[0])[:19] + ' Lot: ' + dfcntr['Lot'].iloc[0] + ' Wfr: ' + dfcntr['Wfr'].iloc[0] + ' Slot:' + dfcntr['Slot'].iloc[0] + '<br>Tool: ' + dfcntr['Tool'].iloc[0] + ' ' + dfcntr['COAT'].iloc[0] + ' ' + dfcntr['CHUCK'].iloc[0] + ' ' + dfcntr['PEB'].iloc[0] + ' ' + dfcntr['DVLP'].iloc[0] + ' ARC: ' + dfcntr['ARC'].iloc[0] +'<br>Dev: ' + dfcntr['DEV'].iloc[0] + ' Mask: ' + dfcntr['RETICLE'].iloc[0]  + ' ERMSE: ' + str(round(min_rmse, 2)) + 'nm (' + str(min_pd) + ')'
     fig.update_layout(title={'text': title, 'font': {'size': 12}}, template=chart_theme)
+    fig.update_xaxes(title_text='Xmm')
+    fig.update_yaxes(title_text='Ymm')
     fig.add_shape(type="circle",
         xref="x", yref="y",
         x0=-150, y0=-150,
