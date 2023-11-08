@@ -344,6 +344,14 @@ reticle_analysis_chart = html.Div([dcc.Graph(figure={}, id='reticle')]),
 
 heatmap_chart = html.Div([dcc.Graph(figure={}, id='sigma-heat-map')])
 
+footer = html.P(
+                [
+                    html.Span('Created by Sean Trautman  ', className='mr-2'),
+                    html.A(html.I(className='fas fa-envelope-square mr-1'), href='mailto:s.trautman12@gmail.com'),
+                    html.A(html.I(className='fab fa-linkedin mr-1'), href='https://www.linkedin.com/in/sean-trautman-b66bb8175/')
+                ], 
+                className='lead')
+
 # Layout of the dash graphs, tables, drop down menus, etc
 # Using dbc container for styling/formatting
 app.layout = dbc.Container([
@@ -396,7 +404,9 @@ app.layout = dbc.Container([
         dbc.Col(reticle_mpx_radio, width={"size":12})]),
     dbc.Row([
         dbc.Col(reticle_analysis_chart, width={"size":6}),
-        dbc.Col(heatmap_chart, width={"size":6})])
+        dbc.Col(heatmap_chart, width={"size":6})]),
+    dbc.Row([
+        dbc.Col(footer, width={"size":12})])
     ], fluid=True, className="dbc dbc-row-selectable")
 
 
