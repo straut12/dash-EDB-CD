@@ -72,22 +72,22 @@ dfcntr_dt['DateTime'] = dfcntr_dt['DateTime'].dt.tz_convert(None)
 dfcntr_dt['MP1A'] = dfcntr_dt['MP1A'].round(1)
 dfcntr_dt['MP1S'] = dfcntr_dt['MP1S'].round(1)
 
-dfmask = df.groupby(['Tool', 'DEV', 'RETICLE', 'Tool-Mask']).agg({'DENSITY':'mean', 'FOCUSOFFSET':'mean', 'MASKCD':'mean', 'DOSE':'mean', 'MP1':'mean'}).reset_index()
+dfreticle = df.groupby(['Tool', 'DEV', 'RETICLE', 'Tool-Mask']).agg({'DENSITY':'mean', 'FOCUSOFFSET':'mean', 'MASKCD':'mean', 'DOSE':'mean', 'MP1':'mean'}).reset_index()
 # Calculate Tool-Mask offset compared to target
-dfmask['MP1'] = target - dfmask['MP1']
-dfmask['MP1'] = dfmask['MP1'].round(1)
+dfreticle['MP1O'] = target - dfreticle['MP1']
+dfreticle['MP1O'] = dfreticle['MP1O'].round(1)
 # Compute the absolute values of 'MP1'
-dfmask['MP1_abs'] = dfmask['MP1'].abs().round(1)
+dfreticle['MP1O_abs'] = dfreticle['MP1O'].abs().round(1)
 # Get the top 10 rows with the largest absolute values of 'MP1'
-dfmasktop10 = dfmask.nlargest(10, 'MP1_abs')[['Tool', 'Tool-Mask', 'MP1', 'MP1_abs']].copy()
-# Sort df_top10 by 'MP1_abs' in descending order
-dfmasktop10 = dfmasktop10.sort_values('MP1_abs', ascending=False)
+dfreticletop10 = dfreticle.nlargest(10, 'MP1O_abs')[['Tool', 'Tool-Mask', 'MP1O', 'MP1O_abs']].copy()
+# Sort df_top10 by 'MP1O_abs' in descending order
+dfreticletop10 = dfreticletop10.sort_values('MP1O_abs', ascending=False)
 
 # Define a color map
 color_map = {'CD101': '#636efa', 'CD102': '#ef553b', 'CD103': '#00cc96', 'CD104': '#ab63fa'}  # Replace with your actual tools and desired colors
 
 # Map the 'Tool' column to colors
-dfmasktop10['color'] = dfmasktop10['Tool'].map(color_map)
+dfreticletop10['color'] = dfreticletop10['Tool'].map(color_map)
 
 #============END IMPORT DATA================
 
@@ -325,7 +325,7 @@ contour_table = html.Div([
         style_cell={'textAlign': 'center'}
     )])
 
-reticle_mpx_radio = html.Div(["Reticle Analysis  ",
+reticle_mpx_radio = html.Div(["Reticle/APC Analysis  ",
     dcc.RadioItems(
     id='reticle-y', 
     options=[{'value': x, 'label': x}  # radio button labels and values
@@ -334,11 +334,13 @@ reticle_mpx_radio = html.Div(["Reticle Analysis  ",
     labelStyle={'display': 'inline-block'}
     )]),
 
-dose2size_maskCD_chart = html.Div([dcc.Graph(figure={}, id='dose2size_maskCD')]),
+dose2size_reticleCD_chart = html.Div([dcc.Graph(figure={}, id='dose2size_reticleCD')]),
 
-focus_offset_mask_density_chart = html.Div([dcc.Graph(figure={}, id='focus_offset_mask_density')]),
+focus_offset_reticle_density_chart = html.Div([dcc.Graph(figure={}, id='focus_offset_reticle_density')]),
 
-reticle_offset_pareto = html.Div([dcc.Graph(figure={}, id='reticle_offset')]),
+reticle_dose_offset_pareto = html.Div([dcc.Graph(figure={}, id='reticle_offset')]),
+
+reticle_dose_offset_CD_scatter = html.Div([dcc.Graph(figure={}, id='reticle_offset_CD')]),
 
 reticle_analysis_chart = html.Div([dcc.Graph(figure={}, id='reticle')]),
 
@@ -396,9 +398,10 @@ app.layout = dbc.Container([
         dbc.Col(contour_table, width={"size":6})]),
     # Reticle and Focus Analysis
     dbc.Row([
-        dbc.Col(dose2size_maskCD_chart, width={"size":3}),
-        dbc.Col(focus_offset_mask_density_chart, width={"size":3}),
-        dbc.Col(reticle_offset_pareto, width={"size":3})]),
+        dbc.Col(dose2size_reticleCD_chart, width={"size":3}),
+        dbc.Col(reticle_dose_offset_pareto, width={"size":3}),
+        dbc.Col(reticle_dose_offset_CD_scatter, width={"size":3}),
+        dbc.Col(focus_offset_reticle_density_chart, width={"size":3})]),
     # Reticle boxplot and Heatmap
     dbc.Row([
         dbc.Col(reticle_mpx_radio, width={"size":12})]),
@@ -430,10 +433,10 @@ def generate_bx_reticle(y, start_date, end_date, toggle):
 @app.callback(
     Output("reticle_offset", "figure"), 
     Input(ThemeSwitchAIO.ids.switch("theme"), "value"))
-def generate_reticle_offset_pareto(toggle):
+def generate_reticle_dose_offset_pareto(toggle):
     chart_theme = theme_chart_dark if toggle else theme_chart_bright
     fig = go.Figure()
-    fig.add_trace(go.Bar(x=dfmasktop10['Tool-Mask'], y=dfmasktop10['MP1'], name='Reticle Offset', marker_color=dfmasktop10['color']))
+    fig.add_trace(go.Bar(x=dfreticletop10['Tool-Mask'], y=dfreticletop10['MP1O'], name='Reticle Offset', marker_color=dfreticletop10['color']))
     # Set up the layout with y-axes
     fig.update_layout(
         yaxis=dict(title='CD Delta to Target (nm)'),
@@ -445,11 +448,11 @@ def generate_reticle_offset_pareto(toggle):
 
 # Scatter plot for Mask CD
 @app.callback(
-    Output("dose2size_maskCD", "figure"), 
+    Output("dose2size_reticleCD", "figure"), 
     Input(ThemeSwitchAIO.ids.switch("theme"), "value"))
-def generate_mask_cd_chart(toggle):
+def generate_reticle_cd_chart(toggle):
     chart_theme = theme_chart_dark if toggle else theme_chart_bright
-    fig = px.scatter(dfmask, x='MASKCD', y='DOSE', color='Tool', template=chart_theme,
+    fig = px.scatter(dfreticle, x='MASKCD', y='DOSE', color='Tool', template=chart_theme,
                      labels={
                      "MASKCD": "Mask CD (nm)",
                      "DOSE": "Dose-to-Target (mJ)"
@@ -457,13 +460,27 @@ def generate_mask_cd_chart(toggle):
     fig.update_layout(title_text='Reticle Dose vs Mask CD')
     return fig
 
+# Scatter plot for Mask CD vs Reticle Offset to Target CD
+@app.callback(
+    Output("reticle_offset_CD", "figure"), 
+    Input(ThemeSwitchAIO.ids.switch("theme"), "value"))
+def generate_reticle_cd_chart(toggle):
+    chart_theme = theme_chart_dark if toggle else theme_chart_bright
+    fig = px.scatter(dfreticle, x='MASKCD', y='MP1O', color='RETICLE', template=chart_theme,
+                     labels={
+                     "MASKCD": "Reticle CD (nm)",
+                     "MP1O": "Reticle Offset to Target (nm) "
+                 })
+    fig.update_layout(title_text='Reticle Offset to Target vs Reticle CD')
+    return fig
+
 # Scatter plot for Focus offset vs pattern density
 @app.callback(
-    Output("focus_offset_mask_density", "figure"), 
+    Output("focus_offset_reticle_density", "figure"), 
     Input(ThemeSwitchAIO.ids.switch("theme"), "value"))
-def generate_mask_cd_chart(toggle):
+def generate_reticle_cd_chart(toggle):
     chart_theme = theme_chart_dark if toggle else theme_chart_bright
-    fig = px.scatter(dfmask, x='DENSITY', y='FOCUSOFFSET', color='Tool', template=chart_theme,
+    fig = px.scatter(dfreticle, x='DENSITY', y='FOCUSOFFSET', color='Tool', template=chart_theme,
                      labels={
                      "DENSITY": "Through-out Rate %",
                      "FOCUSOFFSET": "Focus Offset (um)"
